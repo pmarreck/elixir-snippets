@@ -8,26 +8,29 @@ defmodule Returning do
   end
 end
 
-ExUnit.start
+# run this inline suite with "elixir __ENV__.file test"
+if System.argv |> List.first == "test" do
+  ExUnit.start
 
-defmodule ReturningTest do
-  use ExUnit.Case, async: true
+  defmodule ReturningTest do
+    use ExUnit.Case, async: true
 
-  import Returning
+    import Returning
 
-  test "a returning block returns its parameter" do
-    result = returning 1+2 do
-      value -> IO.puts "got #{value}"
+    test "a returning block returns its parameter" do
+      result = returning 1+2 do
+        value -> IO.puts "got #{value}"
+      end
+      assert result == 3
     end
-    assert result == 3
-  end
 
-  test "returning block pattern matching" do
-    result = returning {:ok, "computer"} do
-      { :error, _oops } -> send self, "BOOM"
-      { :ok, val } -> send self, val
+    test "returning block pattern matching" do
+      result = returning {:ok, "computer"} do
+        { :error, _oops } -> send self, "BOOM"
+        { :ok, val } -> send self, val
+      end
+      assert result == {:ok, "computer"}
+      assert_received "computer"
     end
-    assert result == {:ok, "computer"}
-    assert_received "computer"
   end
 end

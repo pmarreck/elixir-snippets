@@ -6,7 +6,7 @@
 
 # Foo.check_fn(fn p -> p + 1 end)
 
-add1 = fn p -> p + 1 end
+add1 = &(&1 + 1)
 add2 = fn p -> p + 2 end
 
 ^add1 = add1
