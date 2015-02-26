@@ -414,101 +414,18 @@ end
 # run this inline suite with "elixir #{__ENV__.file} test"
 if System.argv |> List.first == "test" do
   ExUnit.start
+  defmodule Time do
+    def now do
+      {mega, s, micro} = :erlang.now
+      (mega * 1000000) + s + (micro / 1000000)
+    end
+  end
   defmodule JsonTest do
     use ExUnit.Case, async: true
 
     alias TheOneTrueJSON, as: JSON
 
-    # success assertions
-    test "json parsing empty string" do
-      assert {:ok, nil} == JSON.parse("")
-    end
-    test "json parsing naked booleans" do
-      assert {:ok, true}  == JSON.parse("true")
-      assert {:ok, false} == JSON.parse("false")
-      assert {:ok, nil}   == JSON.parse("null")
-    end
-    test "json parsing naked booleans leading space" do
-      assert {:ok, true}  == JSON.parse("  true")
-      assert {:ok, false} == JSON.parse("  false")
-      assert {:ok, nil}   == JSON.parse("  null")
-    end
-    test "json parsing naked booleans trailing space" do
-      assert {:ok, true}  == JSON.parse("true  ")
-      assert {:ok, false} == JSON.parse("false  ")
-      assert {:ok, nil}   == JSON.parse("null  ")
-    end
-    test "json parsing scattered space in an array context" do
-      assert {:ok, []} == JSON.parse(" [ ] ")
-    end
-    test "json parsing arrays of booleans" do
-      assert {:ok, [true, false]} == JSON.parse("[ true, false] ")
-    end
-    test "json parsing nested arrays of booleans" do
-      assert {:ok, [true, [true, false]]} == JSON.parse("[ true , [true, false] ] ")
-    end
-    test "json parsing strings" do
-      assert {:ok, "behold"} == JSON.parse("\"behold\"")
-    end
-    test "json parsing strings with escaped string-end character" do
-      assert {:ok, "beh\"old"} == JSON.parse("\"beh\\\"old\"")
-    end
-    test "json parsing string with space and boolean in array" do
-      assert {:ok, ["behold ", true]} == JSON.parse("[\"behold \", true ]")
-    end
-    test "json parsing simple number" do
-      assert {:ok, 2256} == JSON.parse("2256")
-    end
-    test "json parsing negative number" do
-      assert {:ok, -2256} == JSON.parse("-2256")
-    end
-    test "json parsing simple number in array" do
-      assert {:ok, [2256]} == JSON.parse("[2256]")
-    end
-    test "json parsing decimal" do
-      assert {:ok, 2256.93} == JSON.parse("2256.93")
-    end
-    test "json parsing decimals in array" do
-      assert {:ok, [123.45, 67.809]} == JSON.parse("[123.45, 67.809]")
-    end
-    test "json parsing number with immediate exponent" do
-      assert {:ok, 1.0e6} == JSON.parse("10e5")
-    end
-    test "json parsing float with exponent" do
-      assert {:ok, 1.0e6} == JSON.parse("10.0e5")
-    end
-    test "json parsing float with positive exponent" do
-      assert {:ok, 1.0e6} == JSON.parse("10.0e+5")
-    end
-    test "json parsing float with negative exponent" do
-      assert {:ok, 0.0001} == JSON.parse("10.0e-5")
-    end
-    test "json parsing array with floats and lf's" do
-      assert {:ok, [214.75, 18.23]} == JSON.parse(" [214.75,\n 18.23]")
-    end
-    test "json parsing array with floats and cr's" do
-      assert {:ok, [214.75, 18.23]} == JSON.parse(" [214.75,\r 18.23\r]")
-    end
-    test "json parsing array with floats and crlf's" do
-      assert {:ok, [214.75, 18.23]} == JSON.parse(" [\r\n214.75,\r\n 18.23]")
-    end
-    test "json parsing simple object" do
-      assert {:ok, [a: 5, b: "6"]} == JSON.parse("{\"a\": 5, \"b\": \"6\"}")
-    end
-    test "json parsing complex nested object" do
-      assert {:ok, [a: [-256.3, "this is\" a test", [d: 25]], b: ["yabba", 0xdabba, "doo"], c: nil]} == JSON.parse("{\"a\":[-256.3,\"this is\\\" a test\",{\"d\":25}], \"b\":[\"yabba\",895930,\"doo\"],\"c\":null}")
-    end
-    test "json parsing empty object" do
-      assert {:ok, [{}]} == JSON.parse("{}")
-    end
-    test "json parsing object with spaces between key colon and value" do
-      assert {:ok, [a: 5]} == JSON.parse("{\"a\"  : 5}")
-    end
-    test "doesn't choke on unicode in strings" do
-      assert {:ok, "üntergliebenglauténgloben"} == JSON.parse("\"üntergliebenglauténgloben\"")
-    end
-    test "json parsing really hairy json" do
-      assert {:ok, _} = JSON.parse("""
+    @huge_json """
 [
     {
         "description": "allOf",
@@ -621,7 +538,110 @@ if System.argv |> List.first == "test" do
         ]
     }
 ]
-    """)
+    """
+
+    # success assertions
+    test "json parsing empty string" do
+      assert {:ok, nil} == JSON.parse("")
+    end
+    test "json parsing naked booleans" do
+      assert {:ok, true}  == JSON.parse("true")
+      assert {:ok, false} == JSON.parse("false")
+      assert {:ok, nil}   == JSON.parse("null")
+    end
+    test "json parsing naked booleans leading space" do
+      assert {:ok, true}  == JSON.parse("  true")
+      assert {:ok, false} == JSON.parse("  false")
+      assert {:ok, nil}   == JSON.parse("  null")
+    end
+    test "json parsing naked booleans trailing space" do
+      assert {:ok, true}  == JSON.parse("true  ")
+      assert {:ok, false} == JSON.parse("false  ")
+      assert {:ok, nil}   == JSON.parse("null  ")
+    end
+    test "json parsing scattered space in an array context" do
+      assert {:ok, []} == JSON.parse(" [ ] ")
+    end
+    test "json parsing arrays of booleans" do
+      assert {:ok, [true, false]} == JSON.parse("[ true, false] ")
+    end
+    test "json parsing nested arrays of booleans" do
+      assert {:ok, [true, [true, false]]} == JSON.parse("[ true , [true, false] ] ")
+    end
+    test "json parsing strings" do
+      assert {:ok, "behold"} == JSON.parse("\"behold\"")
+    end
+    test "json parsing strings with escaped string-end character" do
+      assert {:ok, "beh\"old"} == JSON.parse("\"beh\\\"old\"")
+    end
+    test "json parsing string with space and boolean in array" do
+      assert {:ok, ["behold ", true]} == JSON.parse("[\"behold \", true ]")
+    end
+    test "json parsing simple number" do
+      assert {:ok, 2256} == JSON.parse("2256")
+    end
+    test "json parsing negative number" do
+      assert {:ok, -2256} == JSON.parse("-2256")
+    end
+    test "json parsing simple number in array" do
+      assert {:ok, [2256]} == JSON.parse("[2256]")
+    end
+    test "json parsing decimal" do
+      assert {:ok, 2256.93} == JSON.parse("2256.93")
+    end
+    test "json parsing decimals in array" do
+      assert {:ok, [123.45, 67.809]} == JSON.parse("[123.45, 67.809]")
+    end
+    test "json parsing number with immediate exponent" do
+      assert {:ok, 1.0e6} == JSON.parse("10e5")
+    end
+    test "json parsing float with exponent" do
+      assert {:ok, 1.0e6} == JSON.parse("10.0e5")
+    end
+    test "json parsing float with positive exponent" do
+      assert {:ok, 1.0e6} == JSON.parse("10.0e+5")
+    end
+    test "json parsing float with negative exponent" do
+      assert {:ok, 0.0001} == JSON.parse("10.0e-5")
+    end
+    test "json parsing array with floats and lf's" do
+      assert {:ok, [214.75, 18.23]} == JSON.parse(" [214.75,\n 18.23]")
+    end
+    test "json parsing array with floats and cr's" do
+      assert {:ok, [214.75, 18.23]} == JSON.parse(" [214.75,\r 18.23\r]")
+    end
+    test "json parsing array with floats and crlf's" do
+      assert {:ok, [214.75, 18.23]} == JSON.parse(" [\r\n214.75,\r\n 18.23]")
+    end
+    test "json parsing simple object" do
+      assert {:ok, [a: 5, b: "6"]} == JSON.parse("{\"a\": 5, \"b\": \"6\"}")
+    end
+    test "json parsing complex nested object" do
+      assert {:ok, [a: [-256.3, "this is\" a test", [d: 25]], b: ["yabba", 0xdabba, "doo"], c: nil]} == JSON.parse("{\"a\":[-256.3,\"this is\\\" a test\",{\"d\":25}], \"b\":[\"yabba\",895930,\"doo\"],\"c\":null}")
+    end
+    test "json parsing empty object" do
+      assert {:ok, [{}]} == JSON.parse("{}")
+    end
+    test "json parsing object with spaces between key colon and value" do
+      assert {:ok, [a: 5]} == JSON.parse("{\"a\"  : 5}")
+    end
+    test "doesn't choke on unicode in strings" do
+      assert {:ok, "üntergliebenglauténgloben"} == JSON.parse("\"üntergliebenglauténgloben\"")
+    end
+    test "json parsing really hairy json" do
+      assert {:ok, _} = JSON.parse(@huge_json)
+      # now time it
+      json_length = String.length @huge_json
+      times = 100
+      t = Time.now
+      for n <- 1..times do
+        JSON.parse(@huge_json)
+      end
+      t_end = Time.now
+      IO.puts ""
+      IO.puts "Time to parse huge json #{times} times: #{t_end - t}"
+      IO.puts "Number of characters in huge json: #{json_length}"
+      IO.puts "JSON chars processed/sec: #{(json_length * times)/(t_end - t)}"
     end
 
     # error assertions
