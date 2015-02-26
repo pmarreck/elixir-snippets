@@ -7,6 +7,9 @@ defmodule TheOneTrueJSON do
 
   # just for reference mainly
   @contexts { :string, :number, :decimal, :exponent, :array, :object, :pair, :key, :value, :boolean }
+  @whitespace '\s\n\t\r'
+  @number_start '-0123456789'
+  @digits ?0..?9
 
   @doc """
   The entry point. A "value" is expected, so that context is pushed onto the stack.
@@ -33,66 +36,18 @@ defmodule TheOneTrueJSON do
   end
 
   @doc """
-  Pass through empty spaces in a string context.
+  Pass through whitespace in a string context.
   """
-  def parse(<<32, t::binary>>, context = [:string | _], output) do
+  def parse(<<s, t::binary>>, context = [:string | _], output) when s in @whitespace do
     debug "Passing through empty space inside a string"
-    parse(t, context, output <> <<32>>)
+    parse(t, context, output <> <<s>>)
   end
 
   @doc """
-  Skip empty spaces outside a string context.
+  Skip whitespace outside a string context.
   """
-  def parse(<<32, t::binary>>, context, output) do
-    debug "Skipping empty space outside a string context"
-    parse(t, context, output)
-  end
-
-  @doc """
-  Pass through tabs in a string context.
-  """
-  def parse(<<?\t, t::binary>>, context = [:string | _], output) do
-    debug "Passing through tab inside a string"
-    parse(t, context, output <> <<?\t>>)
-  end
-
-  @doc """
-  Skip tabs outside a string context.
-  """
-  def parse(<<?\t, t::binary>>, context, output) do
-    debug "Skipping tab outside a string context"
-    parse(t, context, output)
-  end
-
-  @doc """
-  Pass through newlines in a string context.
-  """
-  def parse(<<?\n, t::binary>>, context = [:string | _], output) do
-    debug "Passing through newline inside a string"
-    parse(t, context, output <> <<?\n>>)
-  end
-
-  @doc """
-  Skip newlines outside a string context.
-  """
-  def parse(<<?\n, t::binary>>, context, output) do
-    debug "Skipping newline outside a string context"
-    parse(t, context, output)
-  end
-
-  @doc """
-  Pass through carriage returns in a string context.
-  """
-  def parse(<<?\r, t::binary>>, context = [:string | _], output) do
-    debug "Passing through carriage return inside a string"
-    parse(t, context, output <> <<?\r>>)
-  end
-
-  @doc """
-  Skip carriage returns outside a string context.
-  """
-  def parse(<<?\r, t::binary>>, context, output) do
-    debug "Skipping carriage return outside a string context"
+  def parse(<<s, t::binary>>, context, output) when s in @whitespace do
+    debug "Skipping whitespace outside a string context"
     parse(t, context, output)
   end
 
@@ -209,7 +164,7 @@ defmodule TheOneTrueJSON do
   @doc """
   Drop spaces encountered after end of key (while waiting for colon) in object key context.
   """
-  def parse(<<?", 32, t::binary>>, c = [:string, :key, :pair, :object | context], output) do
+  def parse(<<?", s, t::binary>>, c = [:string, :key, :pair, :object | context], output) when s in @whitespace do
     debug "Dropping space after end of string key in object context", t, context, output
     parse(<<?">> <> t, c, output)
   end
@@ -239,25 +194,9 @@ defmodule TheOneTrueJSON do
   end
 
   @doc """
-  Negative sets number context when a value is expected.
-  """
-  def parse(<<?-, t::binary>>, [:value | context], output) do
-    debug "Found a negative glyph while value expected; setting number context", t, context, output
-    parse(t, [:number | context], output <> <<?->>)
-  end
-
-  @doc """
-  Negative sets number context when inside a bare array.
-  """
-  def parse(<<?-, t::binary>>, c = [:array | context], output) do
-    debug "Found a negative glyph inside array; setting number context", t, context, output
-    parse(t, [:number | c], output <> <<?->>)
-  end
-
-  @doc """
   Digits during a number context.
   """
-  def parse(<<n, t::binary>>, [:number | context], output) when n in ?0..?9 do
+  def parse(<<n, t::binary>>, [:number | context], output) when n in @digits do
     debug "Found digit in number context: #{<<n>>}", t, context, output
     parse(t, [:number | context], output <> <<n>>)
   end
@@ -265,7 +204,7 @@ defmodule TheOneTrueJSON do
   @doc """
   Digits, when a value is expected. Sets number context.
   """
-  def parse(<<n, t::binary>>, [:value | context], output) when n in ?0..?9 do
+  def parse(<<n, t::binary>>, [:value | context], output) when n in @number_start do
     debug "Found digit while value expected: #{<<n>>}", t, context, output
     parse(t, [:number | context], output <> <<n>>)
   end
@@ -273,7 +212,7 @@ defmodule TheOneTrueJSON do
   @doc """
   Digits in a bare array. Sets number context.
   """
-  def parse(<<n, t::binary>>, [:array | context], output) when n in ?0..?9 do
+  def parse(<<n, t::binary>>, [:array | context], output) when n in @number_start do
     debug "Found digit while in array: #{<<n>>}", t, context, output
     parse(t, [:number, :array | context], output <> <<n>>)
   end
@@ -290,7 +229,7 @@ defmodule TheOneTrueJSON do
   Exponent followed by - followed by a digit during a number context.
   Pushes an extra float onto the output for Elixir's sake.
   """
-  def parse(<<?e, ?-, n, t::binary>>, [:number | context], output) when n in ?0..?9 do
+  def parse(<<?e, ?-, n, t::binary>>, [:number | context], output) when n in @digits do
     debug "Found exponent minus number during a number context", t, context, output
     parse(t, [:exponent | context], output <> <<?., ?0, ?e, ?-, n>>)
   end
@@ -298,7 +237,7 @@ defmodule TheOneTrueJSON do
   @doc """
   Exponent followed by a digit during a number context. Pushes an extra float onto the output for Elixir's sake.
   """
-  def parse(<<?e, n, t::binary>>, [:number | context], output) when n in ?0..?9 do
+  def parse(<<?e, n, t::binary>>, [:number | context], output) when n in @digits do
     debug "Found exponent during a number context", t, context, output
     parse(t, [:exponent | context], output <> <<?., ?0, ?e, n>>)
   end
@@ -311,7 +250,7 @@ defmodule TheOneTrueJSON do
   @doc """
   Decimal during a number context. Pushes decimal context.
   """
-  def parse(<<?., n, t::binary>>, [:number | context], output) when n in ?0..?9 do
+  def parse(<<?., n, t::binary>>, [:number | context], output) when n in @digits do
     debug "Found decimal and digit #{<<n>>} during a number context", t, context, output
     parse(t, [:decimal | context], output <> <<?., n>>)
   end
@@ -319,7 +258,7 @@ defmodule TheOneTrueJSON do
   @doc """
   Digits during a decimal context.
   """
-  def parse(<<n, t::binary>>, [:decimal | context], output) when n in ?0..?9 do
+  def parse(<<n, t::binary>>, [:decimal | context], output) when n in @digits do
     debug "Found digit #{<<n>>} during a decimal context", t, context, output
     parse(t, [:decimal | context], output <> <<n>>)
   end
@@ -335,7 +274,7 @@ defmodule TheOneTrueJSON do
   @doc """
   Exponent followed by - followed by a digit during a decimal context.
   """
-  def parse(<<?e, ?-, n, t::binary>>, [:decimal | context], output) when n in ?0..?9 do
+  def parse(<<?e, ?-, n, t::binary>>, [:decimal | context], output) when n in @digits do
     debug "Found exponent and - and digit #{<<n>>} during a decimal context, dropping decimal context and adding exponent context", t, context, output
     parse(t, [:exponent | context], output <> <<?e, ?-, n>>)
   end
@@ -343,7 +282,7 @@ defmodule TheOneTrueJSON do
   @doc """
   Exponent followed by a digit during a decimal context.
   """
-  def parse(<<?e, n, t::binary>>, [:decimal | context], output) when n in ?0..?9 do
+  def parse(<<?e, n, t::binary>>, [:decimal | context], output) when n in @digits do
     debug "Found exponent and digit #{<<n>>} during a decimal context, dropping decimal context and adding exponent context", t, context, output
     parse(t, [:exponent | context], output <> <<?e, n>>)
   end
@@ -356,7 +295,7 @@ defmodule TheOneTrueJSON do
   @doc """
   Digits during an exponent context.
   """
-  def parse(<<n, t::binary>>, [:exponent | context], output) when n in ?0..?9 do
+  def parse(<<n, t::binary>>, [:exponent | context], output) when n in @digits do
     debug "Found digit during exponent context: #{<<n>>}", t, context, output
     parse(t, [:exponent | context], output <> <<n>>)
   end
@@ -364,7 +303,7 @@ defmodule TheOneTrueJSON do
   @doc """
   Drop exponent context if no more digits.
   """
-  def parse(<<n, t::binary>>, [:exponent | context], output) when not n in ?0..?9 do
+  def parse(<<n, t::binary>>, [:exponent | context], output) when not n in @digits do
     debug "Dropping exponent context", t, context, output
     parse(<<n>> <> t, context, output)
   end
@@ -380,7 +319,7 @@ defmodule TheOneTrueJSON do
   @doc """
   Drop decimal context if no more digits.
   """
-  def parse(<<n, t::binary>>, [:decimal | context], output) when not n in ?0..?9 do
+  def parse(<<n, t::binary>>, [:decimal | context], output) when not n in @digits do
     debug "Dropping decimal context", t, context, output
     parse(<<n>> <> t, context, output)
   end
@@ -396,7 +335,7 @@ defmodule TheOneTrueJSON do
   @doc """
   Drop number context if no more digits.
   """
-  def parse(<<n, t::binary>>, [:number | context], output) when not n in ?0..?9 do
+  def parse(<<n, t::binary>>, [:number | context], output) when not n in @digits do
     debug "Dropping number context", t, context, output
     parse(<<n>> <> t, context, output)
   end
@@ -565,6 +504,9 @@ if System.argv |> List.first == "test" do
     test "json parsing object with spaces between key colon and value" do
       assert {:ok, [a: 5]} == JSON.parse("{\"a\"  : 5}")
     end
+    test "doesn't choke on unicode in strings" do
+      assert {:ok, "üntergliebenglauténgloben"} == JSON.parse("\"üntergliebenglauténgloben\"")
+    end
     test "json parsing really hairy json" do
       assert {:ok, _} = JSON.parse("""
 [
@@ -713,6 +655,19 @@ if System.argv |> List.first == "test" do
     end
     test "overly closed array" do
       assert {:error, _} = JSON.parse("[[[[]]]]]")
+    end
+    test "object with no value" do
+      assert {:error, _} = JSON.parse("{\"a\": }")
+    end
+    test "object with no key" do
+      assert {:error, _} = JSON.parse("{\"a\"}")
+      assert {:error, _} = JSON.parse("{5}")
+    end
+    test "object with wrong key type" do
+      assert {:error, _} = JSON.parse("{65: 23}")
+    end
+    test "object with wrong string key delimiter" do
+      assert {:error, _} = JSON.parse("{'65': 23}")
     end
 
   end
