@@ -6,7 +6,7 @@ defmodule TheOneTrueJSON do
   alias TheOneTrueJSON, as: JSON
 
   # just for reference mainly
-  @contexts { :string, :number, :decimal, :exponent, :array, :object, :pair, :key, :value, :boolean }
+  @contexts { :string, :number, :decimal, :exponent, :array, :object, :pair, :key, :value, :boolean, :comma_or_close_array, :comma_or_close_object }
   @whitespace '\s\n\t\r'
   @number_start '-0123456789'
   @digits ?0..?9
@@ -76,27 +76,27 @@ defmodule TheOneTrueJSON do
   end
 
   @doc """
-  Boolean true, inside an array context.
+  Boolean true, inside an array context. Expect comma or close array.
   """
   def parse(<<?t, ?r, ?u, ?e, t::binary>>, c = [:array | context], output) do
     debug "Matched boolean 'true' inside an array", t, context, output
-    parse(t, c, output <> "true")
+    parse(t, [:comma_or_close_array | c], output <> "true")
   end
 
   @doc """
-  Boolean false, inside an array context.
+  Boolean false, inside an array context. Expect comma or close array.
   """
   def parse(<<?f, ?a, ?l, ?s, ?e, t::binary>>, c = [:array | context], output) do
     debug "Matched boolean 'false' inside an array", t, context, output
-    parse(t, c, output <> "false")
+    parse(t, [:comma_or_close_array | c], output <> "false")
   end
 
   @doc """
-  Null, inside an array context.
+  Null, inside an array context. Expect comma or close array.
   """
   def parse(<<?n, ?u, ?l, ?l, t::binary>>, c = [:array | context], output) do
     debug "Matched null/nil inside an array", t, context, output
-    parse(t, c, output <> "nil")
+    parse(t, [:comma_or_close_array | c], output <> "nil")
   end
 
   @doc """
@@ -108,6 +108,14 @@ defmodule TheOneTrueJSON do
   end
 
   @doc """
+  Closing arrays, when a comma or close array is expected. If it matches, pop that context.
+  """
+  def parse(<<?], t::binary>>, [:comma_or_close_array, :array | context], output) do
+    debug "Closed an array context when a value wasn't expected", t, context, output
+    parse(t, context, output <> <<?]>>)
+  end
+
+  @doc """
   Closing arrays, when a value is not expected. If it matches, pop that context.
   """
   def parse(<<?], t::binary>>, [:array | context], output) do
@@ -116,11 +124,11 @@ defmodule TheOneTrueJSON do
   end
 
   @doc """
-  Commas in arrays, outside a value. If it matches, expect another value.
+  Commas in arrays, outside a value, when a comma or close array is expected. If it matches, expect another value.
   """
-  def parse(<<?,, t::binary>>, c = [:array | context], output) do
+  def parse(<<?,, t::binary>>, [:comma_or_close_array, :array | context], output) do
     debug "Found a comma in an array, now expecting a value", t, context, output
-    parse(t, [:value | c], output <> <<?,>>)
+    parse(t, [:value, :array | context], output <> <<?,>>)
   end
 
   @doc """
@@ -634,7 +642,7 @@ if System.argv |> List.first == "test" do
       json_length = String.length @huge_json
       times = 100
       t = Time.now
-      for n <- 1..times do
+      for _ <- 0..times do
         JSON.parse(@huge_json)
       end
       t_end = Time.now
@@ -688,6 +696,21 @@ if System.argv |> List.first == "test" do
     end
     test "object with wrong string key delimiter" do
       assert {:error, _} = JSON.parse("{'65': 23}")
+    end
+    test "consecutive booleans in array, no comma" do
+      assert {:error, _} = JSON.parse("[true false]")
+    end
+    test "comma at start of array" do
+      assert {:error, _} = JSON.parse("[,true]")
+    end
+    test "comma at end of array" do
+      assert {:error, _} = JSON.parse("[false,]")
+    end
+    test "comma at start of object" do
+      assert {:error, _} = JSON.parse("{,\"b\":true}")
+    end
+    test "comma at end of object" do
+      assert {:error, _} = JSON.parse("{\"a\":false,}")
     end
 
   end
