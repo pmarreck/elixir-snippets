@@ -8,8 +8,8 @@ defmodule TheOneTrueJSON do
   # just for reference mainly
   @contexts { :string, :number, :decimal, :exponent, :array, :object, :pair, :key, :value, :boolean, :comma_or_close_array, :comma_or_close_object }
   @whitespace '\s\n\t\r'
-  @number_start '-0123456789'
   @digits ?0..?9
+  @number_start [?- | (@digits |> Enum.to_list)]
 
   @doc """
   The entry point. A "value" is expected, so that context is pushed onto the stack.
@@ -186,6 +186,15 @@ defmodule TheOneTrueJSON do
   end
 
   @doc """
+  End a string context if a string terminator inside an array is reached,
+  then expect a comma or close-array.
+  """
+  def parse(<<?", t::binary>>, [:string, :array | context], output) do
+    debug "Found close quote in a string context inside an array, passing through while expecting a comma or close-array", t, context, output
+    parse(t, [:comma_or_close_array, :array | context], output <> <<?">>)
+  end
+
+  @doc """
   End a string context if a string terminator is reached.
   """
   def parse(<<?", t::binary>>, [:string | context], output) do
@@ -260,7 +269,7 @@ defmodule TheOneTrueJSON do
   """
   def parse(<<?., n, t::binary>>, [:number | context], output) when n in @digits do
     debug "Found decimal and digit #{<<n>>} during a number context", t, context, output
-    parse(t, [:decimal | context], output <> <<?., n>>)
+    parse(t, [:decimal, :number | context], output <> <<?., n>>)
   end
 
   @doc """
@@ -325,9 +334,10 @@ defmodule TheOneTrueJSON do
   end
 
   @doc """
-  Drop decimal context if no more digits.
+  Drop decimal context if no more digits UNLESS it is another decimal,
+  in which case it shouldn't parse.
   """
-  def parse(<<n, t::binary>>, [:decimal | context], output) when not n in @digits do
+  def parse(<<n, t::binary>>, [:decimal | context], output) when (not n in @digits) and (n != ?.) do
     debug "Dropping decimal context", t, context, output
     parse(<<n>> <> t, context, output)
   end
@@ -338,6 +348,14 @@ defmodule TheOneTrueJSON do
   def parse("", [:decimal | context], output) do
     debug "Dropping decimal context- no more input"
     parse("", context, output)
+  end
+
+  @doc """
+  Drop number context if no more digits inside an array, then expect comma_or_close_array.
+  """
+  def parse(<<n, t::binary>>, [:number, :array | context], output) when not n in @digits do
+    debug "Dropping number context and expecting comma or end-array", t, context, output
+    parse(<<n>> <> t, [:comma_or_close_array, :array | context], output)
   end
 
   @doc """
@@ -357,30 +375,53 @@ defmodule TheOneTrueJSON do
   end
 
   @doc """
-  Objects! This should be fun.
-  First when value expected. Push object context.
+  Drop spaces after an object start when value expected.
   """
-  def parse(<<?{, t::binary>>, [:value | context], output) do
-    debug "Found object start when value expected. Pushing object context.", t, context, output
-    parse(t, [:object | context], output <> <<?[, ?{>>)
+  def parse(<<?{, n, t::binary>>, context = [:value | _], output) when n in @whitespace do
+    debug "Dropping whitespace after object start when value expected"
+    parse(<<?{, t::binary>>, context, output)
   end
 
   @doc """
-  Object encountered inside an array context. Push object context.
+  Drop spaces after an object start in an array context.
   """
-  def parse(<<?{, t::binary>>, context = [:array | _], output) do
-    debug "Found object start when inside array. Pushing object context.", t, context, output
-    parse(t, [:object | context], output <> <<?[, ?{>>)
+  def parse(<<?{, n, t::binary>>, context = [:array | _], output) when n in @whitespace do
+    debug "Dropping whitespace after object start in array context"
+    parse(<<?{, t::binary>>, context, output)
   end
 
   @doc """
-  String encountered inside object. Push string, key and pair context.
+  Empty object when value expected. Drop value expectation.
+  """
+  def parse(<<?{, ?}, t::binary>>, [:value | context], output) do
+    debug "Found empty object when value expected. Passing through and dropping value expectation"
+    parse(t, context, output <> <<?[, ?{, ?}, ?]>>)
+  end
+
+  @doc """
+  Object opener and key start/quote when value expected. Push string, key, pair, object context.
   NOTE: This will create atoms from string keys. Perhaps that's a DDoS attack vector (see: Ruby symbols)?
         Maybe add a switch/mode later.
   """
-  def parse(<<?", t::binary>>, [:object | context], output) do
-    debug "Found string inside bare object context. Setting string key and pair context.", t, context, output
-    parse(t, [:string, :key, :pair, :object | context], output <> <<?:, ?">>)
+  def parse(<<?{, ?", t::binary>>, [:value | context], output) do
+    debug "Found object start and string key start when value expected. Pushing string, key, pair, object context.", t, context, output
+    parse(t, [:string, :key, :pair, :object | context], output <> <<?[, ?{, ?:, ?">>)
+  end
+
+  @doc """
+  Empty object encountered inside an array context. Expect comma_or_close_array.
+  """
+  def parse(<<?{, ?}, t::binary>>, context = [:array | _], output) do
+    debug "Found empty object when inside array. Expecting comma or close array.", t, context, output
+    parse(t, [:comma_or_close_array | context], output <> <<?[, ?{, ?}, ?]>>)
+  end
+
+  @doc """
+  Object opener and key start/quote encountered inside an array context. Push string, key, pair, object context.
+  """
+  def parse(<<?{, ?", t::binary>>, context = [:array | _], output) do
+    debug "Found object start and string key start when inside array. Pushing string, key, pair, object context.", t, context, output
+    parse(t, [:string, :key, :pair, :object | context], output <> <<?[, ?{, ?:, ?">>)
   end
 
   @doc """
@@ -389,6 +430,14 @@ defmodule TheOneTrueJSON do
   def parse(<<?}, t::binary>>, [:pair, :object | context], output) do
     debug "Closing pair context", t, context, output
     parse(<<?}>> <> t, [:object | context], output)
+  end
+
+  @doc """
+  Object close character in object, array context. Pop object context, expect comma_or_close_array.
+  """
+  def parse(<<?}, t::binary>>, [:object, :array | context], output) do
+    debug "Closing object context in array and expecting comma_or_close_array", t, context, output
+    parse(t, [:comma_or_close_array, :array | context], output <> <<?},?]>>)
   end
 
   @doc """
@@ -417,6 +466,7 @@ defmodule TheOneTrueJSON do
   #   IO.puts " context: " <> inspect context
   #   IO.puts " output:  " <> inspect output
   # end
+
 end
 
 # run this inline suite with "elixir #{__ENV__.file} test"
