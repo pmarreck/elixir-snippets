@@ -1,7 +1,10 @@
 defmodule TheOneTrueJSON do
   @moduledoc """
   A feeble attempt at a cheap JSON to Elixir data structure parser which utilizes pattern-matching extensively.
-  String keys in objects become atoms, for now. See below.
+  I intentionally used NO regex, to get some exercise with the pattern-matching capabilities of Elixir/Erlang.
+  String keys in objects become atoms, for now. See below. I was going to add a switch for this.
+  Also, don't use this for production work. Use Poison https://github.com/devinus/poison
+  I just did this as an exercise/proof-of-concept, mainly.
   """
   alias TheOneTrueJSON, as: JSON
 
