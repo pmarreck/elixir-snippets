@@ -51,12 +51,7 @@ end
 # run this inline suite with "elixir #{__ENV__.file} test"
 if System.argv |> List.first == "test" do
   ExUnit.start
-  defmodule Time do
-    def now do
-      {mega, s, micro} = :erlang.now
-      (mega * 1000000) + s + (micro / 1000000)
-    end
-  end
+
   defmodule FizzBuzzTest do
     use ExUnit.Case, async: true
     alias StreamingFizzBuzz, as: FizzBuzz
