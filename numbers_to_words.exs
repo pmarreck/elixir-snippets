@@ -88,7 +88,12 @@ defmodule NumbersToWords do
     String.match?(str, ~r/^-?[0-9]+$/)
   end
 
-  # end cases (length is 3 or less). no more to parse, drop "every third digit" state, fallback to digit-trio parsing
+  # End case where we run out of words. Oops.
+  def parse(_, []) do
+    raise ArgumentError, message: "Dude. That number is too long. I don't know how to say it."
+  end
+
+  # End cases (length is 3 or less). no more to parse, drop "every third digit" state, fallback to digit-trio parsing
   def parse(<<ones::utf8>>, _), do: parse(<<ones::utf8>>)
   def parse(<<tens::utf8, ones::utf8>>, _), do: parse(<<tens::utf8, ones::utf8>>)
   def parse(<<hundreds::utf8, tens::utf8, ones::utf8>>, _), do: parse(<<hundreds::utf8, tens::utf8, ones::utf8>>)
@@ -161,6 +166,12 @@ if System.argv |> List.first == "test" do
     # showoff...
     test "negative quintillion with interspersed digits" do
       assert "negative sixty nine quintillion one billion six hundred ninety million one" == NumbersToWords.parse(-69000000001690000001)
+    end
+
+    test "running out of available words raises" do
+      assert_raise ArgumentError, "Dude. That number is too long. I don't know how to say it.", fn ->
+        NumbersToWords.parse(100000000000000000000000000000000000000000000000000)
+      end
     end
 
     test "unknown characters raise" do
