@@ -4,7 +4,6 @@ defmodule NumbersToWords do
 
   @places ~w[ thousand million billion trillion quadrillion quintillion sextillion septillion octillion nonillion decillion ]
 
-
   # the default entry point, when the argument is an int and not a binary string
   def parse(int) when is_integer(int) do
     parse(Integer.to_string(int)) |> String.replace("  ", " ") |> String.rstrip
@@ -13,7 +12,7 @@ defmodule NumbersToWords do
   # nought case
   def parse(""), do: ""
 
-  # negative case
+  # negative integer case
   def parse(<<?-, the_rest::binary>>), do: "negative " <> parse(the_rest)
 
   # ones
@@ -28,12 +27,6 @@ defmodule NumbersToWords do
   def parse("8"), do: "eight"
   def parse("9"), do: "nine"
 
-  # fallthrough case for any binary strings that haven't matched yet
-  def parse(<<unknown::utf8>>) when is_binary(unknown) do
-    IO.puts "parsing #{unknown}"
-    raise ArgumentError, message: "Unknown digit(s): #{unknown}"
-  end
-
   # tens
   def parse("00"), do: ""
   def parse("10"), do: "ten"
@@ -47,6 +40,8 @@ defmodule NumbersToWords do
   def parse("18"), do: "eighteen"
   def parse("19"), do: "nineteen"
   def parse("20"), do: "twenty"
+
+  # tens, finally with a pattern
   def parse(<<?2, n::utf8>>), do: "twenty #{parse(<<n>>)}"
   def parse("30"), do: "thirty"
   def parse(<<?3, n::utf8>>), do: "thirty #{parse(<<n>>)}"
@@ -66,13 +61,13 @@ defmodule NumbersToWords do
   # tens with a leading zero... drop it
   def parse(<<?0, n::utf8>>), do: parse(<<n>>)
 
-  # hundreds with a leading zero
+  # hundreds with a leading zero... drop it
   def parse(<<?0, tens::utf8, ones::utf8>>), do: parse(<<tens, ones>>)
 
   # regular hundreds
   def parse(<<hundreds::utf8, tens::utf8, ones::utf8>>), do: "#{parse(<<hundreds>>)} hundred #{parse(<<tens, ones>>)}"
 
-  #### thousands and up. now we get fancy ####
+  #### Thousands and up. now we get fancy ####
 
   # General case for splitting up digits 4 or longer, start an "every third digit" state and pass back
   # Since all binaries fall through to here that also haven't already matched, we have to validate too
@@ -82,10 +77,6 @@ defmodule NumbersToWords do
     else
       raise ArgumentError, message: "Unknown digit(s): #{long_binary}"
     end
-  end
-
-  defp validate?(str) do
-    String.match?(str, ~r/^-?[0-9]+$/)
   end
 
   # End case where we run out of words. Oops.
@@ -99,14 +90,20 @@ defmodule NumbersToWords do
   def parse(<<hundreds::utf8, tens::utf8, ones::utf8>>, _), do: parse(<<hundreds::utf8, tens::utf8, ones::utf8>>)
 
   # thousands and up here... recursive call... this is most of the magic
-  def parse(<<long_binary::binary>>, [next | rest]) do
+  def parse(<<long_binary::binary>>, [illion | rest]) do
     { further_digits, these_digits } = String.split_at(long_binary, -3)
     if String.match?(further_digits, ~r/0{3}$/) do
-      # we have to skip the trio join word if the next trio of parseable digits to the left is all zeroes basically
+      # we have to skip the trio join word if the next trio of parseable digits to the left is all zeroes, basically
+      # Otherwise you'd get stuff like "six trillion billion million thousand"
       parse(<<further_digits::binary>>, rest) <> parse(<<these_digits::binary>>)
     else
-      parse(<<further_digits::binary>>, rest) <> " #{next} " <> parse(<<these_digits::binary>>)
+      parse(<<further_digits::binary>>, rest) <> " #{illion} " <> parse(<<these_digits::binary>>)
     end
+  end
+
+  # numeric string validation
+  defp validate?(str) do
+    String.match?(str, ~r/^-?[0-9]+$/)
   end
 
 end
