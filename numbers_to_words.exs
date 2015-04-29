@@ -249,6 +249,7 @@ if System.argv |> List.first == "test" do
 end
 
 # run this benchmark with "elixir #{__ENV__.file} bm"
+# If you have a full-fledged Elixir project, just use Benchfella instead.
 if System.argv |> List.first == "bm" do
   defmodule Time do
     def now, do: ({msecs, secs, musecs} = :erlang.now; (msecs*1000000 + secs)*1000000 + musecs)
@@ -265,7 +266,7 @@ if System.argv |> List.first == "bm" do
       tot = Time.now - start
       ops_per_mus = 1000/tot
       ops_per_s = ops_per_mus * 1000000
-      IO.puts ops_per_s
+      IO.puts "Operations per second: #{ops_per_s}"
       ops_per_s
     end
   end
