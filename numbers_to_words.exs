@@ -1,6 +1,8 @@
-# numbers to words
+# Numbers to Words
 
-# Original implementation:
+# Original implementation using binary matching:
+# The problem with this version is it's 10 times slower than the one below it, based on some simple benchmarking.
+# I've left it in for posterity/educational reasons.
 
 # defmodule NumbersToWords do
 
@@ -161,6 +163,7 @@ defmodule NumbersToWords do
   defp to_word(n) when n < 0, do: ["negative", to_word(-n)]
   defp to_word(n) when n < 100, do: [to_word(div(n,10)*10), to_word(rem(n, 10))]
   defp to_word(n) when n < 1_000, do: [to_word(div(n,100)), "hundred", to_word(rem(n, 100))]
+  # dynamically define to_word for thousands and up
   ~w[ thousand million billion trillion quadrillion quintillion sextillion septillion octillion nonillion decillion ]
   |> Enum.zip(2..13)
   |> Enum.each(
@@ -183,14 +186,14 @@ if System.argv |> List.first == "test" do
     use ExUnit.Case, async: true
 
     test "digits to words" do
-      %{
-        zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
-        eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17,
-        eighteen: 18, nineteen: 19
-      }
+      ~w[
+        zero one two three four five six seven eight nine ten
+        eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen
+      ]
+      |> Enum.zip(0..20)
       |>
       Enum.each(fn {word, num} ->
-        assert to_string(word) == NumbersToWords.parse(num)
+        assert word == NumbersToWords.parse(num)
       end)
     end
 
@@ -243,4 +246,30 @@ if System.argv |> List.first == "test" do
     end
 
   end
+end
+
+# run this benchmark with "elixir #{__ENV__.file} bm"
+if System.argv |> List.first == "bm" do
+  defmodule Time do
+    def now, do: ({msecs, secs, musecs} = :erlang.now; (msecs*1000000 + secs)*1000000 + musecs)
+  end
+  defmodule BM do
+    def times(0, f), do: f.()
+    def times(n, f) do
+      f.()
+      times(n-1, f)
+    end
+    def go(f) do
+      start = Time.now
+      times(1000, f)
+      tot = Time.now - start
+      ops_per_mus = 1000/tot
+      ops_per_s = ops_per_mus * 1000000
+      IO.puts ops_per_s
+      ops_per_s
+    end
+  end
+  BM.go(fn ->
+    NumbersToWords.parse(:random.uniform(999999999999999999999))
+  end)
 end
