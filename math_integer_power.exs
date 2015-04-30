@@ -12,14 +12,23 @@
 defmodule Math do
   use Bitwise, only_operators: true
 
-  # integer power function
+  @doc """
+  Integer power function
+
+  ## Examples
+
+    iex> Math.ipow(123, 4)
+    228886641
+
+  """
+  @spec ipow(integer, non_neg_integer) :: integer
   def ipow(base, exp) when is_integer(base) and is_integer(exp) and exp > -1 do
     _ipow(1, base, exp)
   end
 
   # optimization for base 2
-  defp _ipow(1, 2, exp) do
-    1 <<< exp
+  defp _ipow(result, 2, exp) do
+    result <<< exp
   end
   # final case
   defp _ipow(result, _, 0) do
@@ -31,6 +40,11 @@ defmodule Math do
   defp _ipow(result, base, exp) do
     _ipow(result, base * base, exp >>> 1)
   end
+
+  # I sure wish this was possible...
+  # defmacro left *** right when is_integer(left) and is_integer(right) and exp > -1 do
+  #   quote do: Math.ipow(unquote(left), unquote(right))
+  # end
 end
 
 # run this inline suite with "elixir #{__ENV__.file} test"
@@ -57,6 +71,7 @@ if System.argv |> List.first == "test" do
     test "integer power negative base" do
       assert Math.ipow(-2, 2) == 4
       assert Math.ipow(-2, 5) == -32
+      assert Math.ipow(-3, 15) == -14348907
     end
 
   end

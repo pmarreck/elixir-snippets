@@ -1,3 +1,6 @@
+# Inspired by Haskell
+# The advantage of this way of dividing a list into parts is that
+# the list doesn't have to be counted or otherwise traversed first.
 defmodule Collection do
   def divide(items, n), do: do_divide(items, List.duplicate([], n), [])
   defp do_divide([], o1, o2), do: o1 ++ o2
