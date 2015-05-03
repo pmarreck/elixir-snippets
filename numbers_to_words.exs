@@ -114,14 +114,14 @@
 
 # New implementation using divs and mods:
 
-defmodule MathThatShouldHaveBeenInStockElixirAlready do
-  def int_pow10(num, 0), do: num
-  def int_pow10(num, pow) when pow > 0, do: int_pow10(10 * num, pow - 1)
-end
+Code.require_file "math_integer_power.exs", __DIR__
 
 defmodule NumbersToWords do
-
-  alias MathThatShouldHaveBeenInStockElixirAlready, as: Math
+  @moduledoc """
+  Converts an integer number like 1234567 to words like
+  "one million two hundred thirty four thousand five hundred sixty seven"
+  """
+  import Math.Integer
 
   def parse(0), do: "zero"
   def parse(number) when is_integer(number) do
@@ -168,8 +168,8 @@ defmodule NumbersToWords do
   |> Enum.zip(2..13)
   |> Enum.each(
     fn {illion, factor} ->
-      defp to_word(n) when n < unquote(Math.int_pow10(1,factor*3)) do
-        [to_word(div(n,unquote(Math.int_pow10(1,(factor-1)*3)))), unquote(illion), to_word(rem(n,unquote(Math.int_pow10(1,(factor-1)*3))))]
+      defp to_word(n) when n < unquote(ipow_10(factor*3)) do
+        [to_word(div(n,unquote(ipow_10((factor-1)*3)))), unquote(illion), to_word(rem(n,unquote(ipow_10((factor-1)*3))))]
       end
     end
   )

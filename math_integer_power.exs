@@ -9,8 +9,12 @@
 # Depends on Bitwise from the Elixir standard library.
 # Note: I didn't define this for negative exponents. Yet.
 
-defmodule Math do
+defmodule Math.Integer do
   use Bitwise, only_operators: true
+  @moduledoc """
+  Some integer math operations missing from Erlang, and Elixir.
+  Included so far: ipow (integer power)
+  """
 
   @doc """
   Integer power function
@@ -39,13 +43,10 @@ defmodule Math do
   defp _ipow(result, base, exp),
     do: _ipow(result, base * base, exp >>> 1)
 
-  # I sure wish this was possible...
-  # defmacro left ** right when is_integer(left) and is_integer(right) and exp > -1 do
-  #   quote do: Math.ipow(unquote(left), unquote(right))
-  # end
-  # def left ++ right do
-  #   ipow(left, right)
-  # end
+  @spec ipow_10(non_neg_integer) :: integer
+  def ipow_10(exp) when is_integer(exp) and exp > -1,
+    do: _ipow(1, 10, exp)
+
 end
 
 # run this inline suite with "elixir #{__ENV__.file} test"
@@ -54,7 +55,7 @@ if System.argv |> List.first == "test" do
 
   defmodule MathIpowTest do
     use ExUnit.Case, async: true
-    import Math
+    import Math.Integer
 
     test "integer power zeroes" do
       # this is apparently controversial:
