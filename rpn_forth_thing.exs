@@ -111,12 +111,12 @@ defmodule RPNForthThing do
   end
 
   # In-place decrement
-  def compute([ "--" | remaining_input], [x | stack], dict) do
+  def compute([ "1-" | remaining_input], [x | stack], dict) do
     compute(remaining_input, [(x - 1) | stack], dict)
   end
 
   # In-place increment
-  def compute([ "++" | remaining_input], [x | stack], dict) do
+  def compute([ "1+" | remaining_input], [x | stack], dict) do
     compute(remaining_input, [(x + 1) | stack], dict)
   end
 
@@ -182,21 +182,21 @@ defmodule RPNForthThing do
     compute(remaining_input, [out | stack], dict)
   end
 
-  def compute([ "?" | remaining_input], stack, dict) do
-    compute([ "if" | remaining_input], stack, dict)
-  end
+  # def compute([ "?" | remaining_input], stack, dict) do
+  #   compute([ "if" | remaining_input], stack, dict)
+  # end
 
-  # If-Then-Else
+  # If-Else-Then
   # Note that this is a prefix function!
-  # Usage: test_val is on top of stack. "if <then-value> <else-value>"
-  # puts then-value on top of stack if test_val != 0, else-value if test_val == 0.
-  # There are currently no blocks (like do-end style blocks) so you may
-  # have to define functions to implement branching behavior.
-  def compute([ "if", th, el | remaining_input], [x | stack], dict) do
+  # Usage: test_val is on top of stack. "if <then-clause> else <else-clause> then"
+  # puts then-clause on top of instruction stack if test_val != 0, else-clause if test_val == 0.
+  def compute([ "if" | remaining_input], [x | stack], dict) do
+    {if_clause, ["else" | remaining_input]} = Enum.split_while(remaining_input, fn(ins) -> ins != "else" end)
+    {else_clause, ["then" | remaining_input]} = Enum.split_while(remaining_input, fn(ins) -> ins != "then" end)
     if x != 0 do
-      compute([th | remaining_input], stack, dict)
+      compute(if_clause ++ remaining_input, stack, dict)
     else
-      compute([el | remaining_input], stack, dict)
+      compute(else_clause ++ remaining_input, stack, dict)
     end
   end
 
@@ -226,8 +226,8 @@ defmodule RPNForthThing do
   end
 
   # Comments
-  def compute([ "#" | remaining_input ], stack, dict) do
-    {_, [";" | remainder]} = Enum.split_while(remaining_input, fn(ins) -> ins != ";" end)
+  def compute([ "(" | remaining_input ], stack, dict) do
+    {_, [")" | remainder]} = Enum.split_while(remaining_input, fn(ins) -> ins != ")" end)
     compute(remainder, stack, dict)
   end
 
@@ -248,6 +248,12 @@ defmodule RPNForthThing do
   # Prints the literal value of the top of the stack, popping it
   def compute([ "." | remaining_input], [x | stack], dict) do
     IO.puts x
+    compute(remaining_input, stack, dict)
+  end
+
+  # Emits a carriage return
+  def compute([ "cr" | remaining_input], stack, dict) do
+    IO.puts ""
     compute(remaining_input, stack, dict)
   end
 
@@ -349,19 +355,19 @@ if System.argv |> List.first == "test" do
     end
 
     test "increment and decrement" do
-      assert RPNForthThing.initialize(~w[ 3 ++ ]) == 4
-      assert RPNForthThing.initialize(~w[ 3 -- ]) == 2
+      assert RPNForthThing.initialize(~w[ 3 1+ ]) == 4
+      assert RPNForthThing.initialize(~w[ 3 1- ]) == 2
     end
 
     test "unary negation" do
       assert RPNForthThing.initialize(~w[ -3 @- ]) == 3
     end
 
-    test "if ? then else" do
-      assert RPNForthThing.initialize(~w[ 3 5 < if 33 44 ]) == 33
-      assert RPNForthThing.initialize(~w[ 3 5 < ? 33 44 ]) == 33
-      assert RPNForthThing.initialize(~w[ 3 5 > if 33 44 ]) == 44
-      assert RPNForthThing.initialize(~w[ 3 5 > ? 33 44 ]) == 44
+    test "if else then" do
+      assert RPNForthThing.initialize(~w[ 3 5 < if 33 else 44 then ]) == 33
+      # assert RPNForthThing.initialize(~w[ 3 5 < ? 33 44 ]) == 33
+      assert RPNForthThing.initialize(~w[ 3 5 > if 33 else 44 then ]) == 44
+      # assert RPNForthThing.initialize(~w[ 3 5 > ? 33 44 ]) == 44
     end
 
     test "and or not" do
@@ -391,19 +397,27 @@ if System.argv |> List.first == "test" do
 
     test "define a commented square function and use it" do
       assert RPNForthThing.initialize(~w[
-        # Compute the square of the top of the stack and leave it on the stack. ;
+        ( Compute the square of the top of the stack and leave it on the stack. )
         : square dup * ;
         10 square
       ]) == 100
     end
 
+    test "Forth example straight out of A Brief Introduction To Forth" do
+      # http://users.ece.cmu.edu/~koopman/forth/hopl.html
+      assert RPNForthThing.initialize(~w[
+        : SQUARED        ( n -- nsquared ) dup * ;
+        : SUM-OF-SQUARES ( a b -- c      ) SQUARED swap SQUARED + ;
+        3 4 SUM-OF-SQUARES
+      ]) == 25
+    end
+
     test "defining and using factorial" do
       # crap, I need a rot3 or something. brb... Done.
       assert RPNForthThing.initialize(~w[
-        : super_inner_factorial dup rot3^ * swap -- inner_factorial ;
-        # Checks if we've decremented below 1; if not, call innermost function ;
-        : inner_factorial dup 1 > if super_inner_factorial drop ;
-        # Entry point. Pushes a running total onto the stack and swaps ;
+        ( Checks if we've decremented below 1; if not, recurse )
+        : inner_factorial dup 1 > if dup rot3^ * swap 1- inner_factorial else drop then ;
+        ( Entry point. Pushes a running total onto the stack and swaps )
         : factorial 1 swap inner_factorial ;
         6 factorial
       ]) == 720
