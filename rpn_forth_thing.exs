@@ -5,7 +5,6 @@
 
 # Aaaand I seem to be adding bits of Forth (and Forth-inspired) here and there. For fun, of course.
 # Aaaand it's now good enough to define and use named functions. And do conditional branching.
-# No loops yet, though, although that could probably be implemented as a function.
 # I'm pretty sure it is good enough to do fizzbuzz or deal poker cards,
 # but that's left as an exercise for the reader... or until I get bored again...
 
@@ -56,6 +55,18 @@ defmodule RPNForthThing do
 
   def compute([], [last_val], _) do
     last_val
+  end
+
+  def compute([], [], _) do
+    # just bail
+  end
+
+  def compute([ "end" | _ ], stack, _) do
+    if Enum.count(stack) == 1 do
+      List.first(stack)
+    else
+      stack
+    end
   end
 
   def compute([ "+" | remaining_input], [y, x | stack], dict) do
@@ -191,8 +202,13 @@ defmodule RPNForthThing do
   # Usage: test_val is on top of stack. "if <then-clause> else <else-clause> then"
   # puts then-clause on top of instruction stack if test_val != 0, else-clause if test_val == 0.
   def compute([ "if" | remaining_input], [x | stack], dict) do
-    {if_clause, ["else" | remaining_input]} = Enum.split_while(remaining_input, fn(ins) -> ins != "else" end)
-    {else_clause, ["then" | remaining_input]} = Enum.split_while(remaining_input, fn(ins) -> ins != "then" end)
+    {if_and_possibly_else_clause, ["then" | remaining_input]} = Enum.split_while(remaining_input, fn(ins) -> ins != "then" end)
+    if Enum.any?(if_and_possibly_else_clause, fn ins -> ins == "else" end) do
+      {if_clause, ["else" | else_clause]} = Enum.split_while(if_and_possibly_else_clause, fn(ins) -> ins != "else" end)
+    else
+      if_clause = if_and_possibly_else_clause
+      else_clause = []
+    end
     if x != 0 do
       compute(if_clause ++ remaining_input, stack, dict)
     else
@@ -229,6 +245,21 @@ defmodule RPNForthThing do
   def compute([ "(" | remaining_input ], stack, dict) do
     {_, [")" | remainder]} = Enum.split_while(remaining_input, fn(ins) -> ins != ")" end)
     compute(remainder, stack, dict)
+  end
+
+  # Do loops
+  def compute([ "do" | remainder ], [x, y | stack], dict) do
+    {the_loop, ["loop" | remainder]} = Enum.split_while(remainder, fn(ins) -> ins != "loop" end)
+    # So the forth spec says the do loop goes up to but NOT INCLUDING the last number
+    # But in my case the first number can be bigger than the last, so it counts down
+    # Call it an enhancement
+    # But that means we have to increment or decrement appropriately based on which is bigger.
+    end_num = if x < y, do: y-1, else: y+1
+    unrolled_loop = Enum.map x..end_num, fn i ->
+      # replace each "i" in the loop context with the index value
+      Enum.map(the_loop, fn(maybe_i) -> if maybe_i == "i", do: i, else: maybe_i end)
+    end
+    compute(List.flatten([unrolled_loop | remainder]), stack, dict)
   end
 
   # new definitions!
@@ -280,6 +311,8 @@ if System.argv |> List.first == "test" do
 
   defmodule RPNForthThingTest do
     use ExUnit.Case, async: true
+
+    import ExUnit.CaptureIO
 
     test "normalizing input list" do
       assert RPNForthThing.normalize(["1", "5", "+"]) === [1, 5, "+"]
@@ -370,6 +403,10 @@ if System.argv |> List.first == "test" do
       # assert RPNForthThing.initialize(~w[ 3 5 > ? 33 44 ]) == 44
     end
 
+    test "if then, NO else" do
+      assert RPNForthThing.initialize(~w[ 3 5 < if 33 then ]) == 33
+    end
+
     test "and or not" do
       assert RPNForthThing.initialize(~w[ 3 5 < 8 6 > and ]) != 0
       assert RPNForthThing.initialize(~w[ 3 5 < 8 6 < and ]) == 0
@@ -422,6 +459,35 @@ if System.argv |> List.first == "test" do
         6 factorial
       ]) == 720
       # Well holy shit, it passes.
+    end
+
+    test "emit" do
+      assert capture_io(fn ->
+        RPNForthThing.initialize(~w[ 101 emit ])
+      end) == "e"
+    end
+
+    test "carriage return" do
+      assert capture_io(fn ->
+        RPNForthThing.initialize(~w[ cr end ])
+      end) == "\n"
+    end
+
+    test "emit looped numbers" do
+      assert capture_io(fn ->
+        RPNForthThing.initialize(~w[ 0 10 do i emit loop ])
+      end) == <<10, 9, 8, 7, 6, 5, 4, 3, 2, 1>>
+    end
+
+    test "print stars" do
+      # example from https://github.com/dsevilla/uForth
+      assert capture_io(fn ->
+        RPNForthThing.initialize(~w[
+          : STAR 42 emit ;
+          : STARS 0 do STAR loop ;
+          20 STARS end
+        ])
+      end) == "********************"
     end
 
   end
