@@ -490,6 +490,17 @@ if System.argv |> List.first == "test" do
       end) == "********************"
     end
 
+    test "nested loops" do
+      assert capture_io(fn ->
+        RPNForthThing.initialize(~w[
+          : STAR 42 emit ;
+          : DASH 45 emit ;
+          : STARDASHES 0 do 2 0 do STAR loop 2 0 do DASH loop loop ;
+          5 STARDASHES end
+        ])
+      end) == "**--**--**--**--**--"
+    end
+
   end
 else
   IO.puts RPNForthThing.initialize
