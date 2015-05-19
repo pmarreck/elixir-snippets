@@ -29,7 +29,7 @@ defmodule Time do
 end
 
 
-times = 100
+times = 1000000
 
 t = Time.now
 Fib.run_recursive times

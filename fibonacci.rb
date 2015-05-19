@@ -39,7 +39,7 @@ class Fib
 
 end
 
-times = 100
+times = 1000000
 
 
 # I commented the recursive version out because, even though it doesn't blow the stack,
