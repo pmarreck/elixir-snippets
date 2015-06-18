@@ -42,6 +42,7 @@ defmodule DamerauLevenshtein do
   empty strings
   """
   def distance("", "", _max_cost, current_cost) do
+    # IO.puts "Remaining strings empty"
     current_cost
   end
 
@@ -49,6 +50,7 @@ defmodule DamerauLevenshtein do
   two equivalent strings
   """
   def distance(same, same, _max_cost, current_cost) do
+    # IO.puts "Remaining strings the same: #{same}"
     current_cost
   end
 
@@ -56,6 +58,7 @@ defmodule DamerauLevenshtein do
   ran out of characters on first string, add second string length as cost
   """
   def distance("", target, max_cost, current_cost) do
+    # IO.puts "First string empty, remaining on second string: #{target}"
     distance("", "", max_cost, current_cost + String.length(target))
   end
 
@@ -63,6 +66,7 @@ defmodule DamerauLevenshtein do
   ran out of characters on second string, add remaining first string length as cost
   """
   def distance(candidate, "", max_cost, current_cost) do
+    # IO.puts "Second string empty, remaining on first string: #{candidate}"
     distance("", "", max_cost, current_cost + String.length(candidate))
   end
 
@@ -70,6 +74,7 @@ defmodule DamerauLevenshtein do
   if both heads are the same, advance both
   """
   def distance(<<equal_char::utf8, candidate_tail::binary>>, <<equal_char::utf8, target_tail::binary>>, max_cost, current_cost) do
+    # IO.puts "Both chars same: '#{equal_char}' Advancing both"
     distance(candidate_tail, target_tail, max_cost, current_cost)
   end
 
@@ -77,18 +82,12 @@ defmodule DamerauLevenshtein do
   heads are different, but a transposition is in place. advance both and increment cost by 1
   """
   def distance(<<first_char::utf8, second_char::utf8, candidate_tail::binary>>, <<second_char::utf8, first_char::utf8, target_tail::binary>>, max_cost, current_cost) do
+    # IO.puts "Transposition seen between #{first_char}#{second_char} and #{second_char}#{first_char}."
     distance(candidate_tail, target_tail, max_cost, current_cost + 1)
   end
 
   @doc """
-  heads are different, but second characters are the same. substitution. advance both and increment cost by 1
-  """
-  def distance(<<_::utf8, second_char::utf8, candidate_tail::binary>>, <<_::utf8, second_char::utf8, target_tail::binary>>, max_cost, current_cost) do
-    distance(candidate_tail, target_tail, max_cost, current_cost + 1)
-  end
-
-  @doc """
-  heads are different, assume 1 deletion in either side (an insertion relative to the other side) and return minimum value of either cost.
+  heads are different, assume a substitution OR 1 deletion in either side (an insertion relative to the other side) and return minimum value of all costs.
   Note that this is where runtimes can get hairy in worst cases, there's no TCO here
   """
   def distance(whole_candidate = <<_candidate_head::utf8, candidate_tail::binary>>, whole_target = <<_target_head::utf8, target_tail::binary>>, max_cost, current_cost) do
@@ -156,6 +155,24 @@ if System.argv |> List.first == "test" do
     test "distance exceeds max" do
       assert 5 == DL.distance("testing", "", 4)
     end
+
+    test "arbitrary differences taken from other test suites" do
+      assert 4 == DL.distance("Toralf", "Titan")
+      assert 8 == DL.distance("rosettacode", "raisethysword")
+      assert 3 == DL.distance("Saturday", "Sunday") # 2 deletions, 1 substitution
+      assert 3 == DL.distance("kitten", "sitting") # 2 substitutions, 1 insertion
+      # dna, anyone?
+      # I just realized that the movie title "Gattaca" only uses DNA letters. ::slaps forehead::
+      assert 4 == DL.distance("ACGTTGACCATGAGTCCAG", "ACGTGTACCCTGGTACCAG")
+    end
+
+    # Optimal string alignment distance special cases:
+    # see http://en.wikipedia.org/wiki/Damerau%E2%80%93Levenshtein_distance
+    # Damerau-Levenshtein("CA", "ABC") is CA -> AC -> ABC == 2 steps, 1 transpose and 1 insert
+    # test "optimal string distance" do
+    #   # this one is tough! is it necessary? Commented out for now
+    #   assert 2 == DL.distance("CA", "ABC")
+    # end
 
     test "d-l equivalence" do
       assert DL.equivalent?("Peter", "Petter", 1)
