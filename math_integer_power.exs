@@ -14,6 +14,12 @@ defmodule Math.Integer do
   @moduledoc """
   Some integer math operations missing from Erlang, and Elixir.
   Included so far: ipow (integer power)
+
+  NOTE ON POSSIBLE FUTURE REFACTOR using :crypto.mod_pow/3 :
+  something like,
+  nearly_infinite_int_in_a_finite_Erlang_world = :erlang.trunc(1.79e308)
+  << x :: integer-size(32)-big, rest :: binary >> = :crypto.mod_pow(base,exponent,nearly_infinite_int_in_a_finite_Erlang_world)
+  IO.puts x
   """
 
   @doc """
