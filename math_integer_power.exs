@@ -14,13 +14,10 @@ defmodule Math.Integer do
   @moduledoc """
   Some integer math operations missing from Erlang, and Elixir.
   Included so far: ipow (integer power)
-
-  NOTE ON POSSIBLE FUTURE REFACTOR using :crypto.mod_pow/3 :
-  something like,
-  nearly_infinite_int_in_a_finite_Erlang_world = :erlang.trunc(1.79e308)
-  << x :: integer-size(32)-big, rest :: binary >> = :crypto.mod_pow(base,exponent,nearly_infinite_int_in_a_finite_Erlang_world)
-  IO.puts x
   """
+
+  @nearly_infinite_int_in_a_finite_Erlang_world :erlang.trunc(1.79e308)
+  @maximally_accurate_native_result :erlang.trunc(1.0e307)
 
   @doc """
   Integer power function
@@ -31,9 +28,24 @@ defmodule Math.Integer do
     228886641
 
   """
+  @spec ipow(non_neg_integer, non_neg_integer) :: integer
+  def ipow(base, exp) when is_integer(base) and is_integer(exp) and base > -1 and exp > -1,
+    do: _native_pow(base, exp) # _ipow(1, base, exp)
+
   @spec ipow(integer, non_neg_integer) :: integer
   def ipow(base, exp) when is_integer(base) and is_integer(exp) and exp > -1,
     do: _ipow(1, base, exp)
+
+  defp _native_pow(base, exp) do
+    _check_candidate_pow((:crypto.mod_pow(base,exp,@nearly_infinite_int_in_a_finite_Erlang_world) |> :crypto.bytes_to_integer), base, exp)
+  end
+  defp _check_candidate_pow(candidate, base, exp) when candidate > @maximally_accurate_native_result do
+    # accuracy is suspect, revert to slower power computation done in native Elixir Bignums instead of the crypto NIF
+    _ipow(1, base, exp)
+  end
+  defp _check_candidate_pow(candidate, _, _) do
+    candidate
+  end
 
   # optimization for base 2
   defp _ipow(result, 2, exp),
@@ -51,7 +63,7 @@ defmodule Math.Integer do
 
   @spec ipow_10(non_neg_integer) :: integer
   def ipow_10(exp) when is_integer(exp) and exp > -1,
-    do: _ipow(1, 10, exp)
+    do: ipow(10, exp)
 
 end
 
