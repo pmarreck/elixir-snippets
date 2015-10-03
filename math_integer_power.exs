@@ -17,7 +17,7 @@ defmodule Math.Integer do
   """
 
   @nearly_infinite_int_in_a_finite_Erlang_world :erlang.trunc(1.79e308)
-  @maximally_accurate_native_result :erlang.trunc(1.0e307)
+  @max_num_native_base10_length 307
 
   @doc """
   Integer power function
@@ -28,23 +28,22 @@ defmodule Math.Integer do
     228886641
 
   """
-  @spec ipow(non_neg_integer, non_neg_integer) :: integer
-  def ipow(base, exp) when is_integer(base) and is_integer(exp) and base > -1 and exp > -1,
-    do: _native_pow(base, exp) # _ipow(1, base, exp)
+  @spec ipow(pos_integer, non_neg_integer) :: integer
+  def ipow(base, exp) when is_integer(base) and is_integer(exp) and base > 0 and exp > -1 do
+    # If the estimated number of answer digits is greater than Erlang can handle, use slower implementation
+    if ((:math.log(base)/:math.log(10)) * exp + 1) <= @max_num_native_base10_length do
+      _native_pow(base, exp) # _ipow(1, base, exp)
+    else
+      _ipow(1, base, exp)
+    end
+  end
 
   @spec ipow(integer, non_neg_integer) :: integer
   def ipow(base, exp) when is_integer(base) and is_integer(exp) and exp > -1,
     do: _ipow(1, base, exp)
 
   defp _native_pow(base, exp) do
-    _check_candidate_pow((:crypto.mod_pow(base,exp,@nearly_infinite_int_in_a_finite_Erlang_world) |> :crypto.bytes_to_integer), base, exp)
-  end
-  defp _check_candidate_pow(candidate, base, exp) when candidate > @maximally_accurate_native_result do
-    # accuracy is suspect, revert to slower power computation done in native Elixir Bignums instead of the crypto NIF
-    _ipow(1, base, exp)
-  end
-  defp _check_candidate_pow(candidate, _, _) do
-    candidate
+    :crypto.mod_pow(base,exp,@nearly_infinite_int_in_a_finite_Erlang_world) |> :crypto.bytes_to_integer
   end
 
   # optimization for base 2
