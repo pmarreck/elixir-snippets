@@ -2,13 +2,13 @@
 
 Before you refactor ANY code, you have to cover it with a test. Which presented me here with a conundrum, a maze being a randomly-generated thing. The trick, of course, is to make it "deterministically random" so that each run of the test produces the same "random" maze, which can then be asserted against.
 
-The first stab at making it deterministic was to pass in the random seed for :random.seed(rand_seed) to the "generate" function, but that didn't seem to work.
+The first stab at making it deterministic was to pass in the random seed for `:random.seed(rand_seed)` to the "generate" function, but that didn't seem to work.
 After more investigation, I noticed that the following command produces different output every time, which made no sense:
-:random.seed({1,2,3}); Enum.shuffle([1,2,3,4])
-After discussion with the helpful folks on the #elixir-lang IRC channel, it turns out that Enum.shuffle uses the newer source of randomness API :rand, NOT :random, so reseeding THAT code as well with
-:rand.seed(:exs64, {1,2,3}); Enum.shuffle([1,2,3,4])
+`:random.seed({1,2,3}); Enum.shuffle([1,2,3,4])`
+After discussion with the helpful folks on the #elixir-lang IRC channel, it turns out that `Enum.shuffle` uses the newer source of randomness API `:rand`, NOT `:random`, so reseeding THAT code as well with
+`:rand.seed(:exs64, {1,2,3}); Enum.shuffle([1,2,3,4])`
 made it the same every time! So for now I seeded both.
-NOTE: It is possible to change the assertion to match the output using the default seed for :random.seed, remove that particular reseeding, and the test would still pass (turns out that in Erlang, "random" is actually deterministic per-process unless manually reseeded), but I liked it being explicit.
+NOTE: It is possible to change the assertion to match the output using the default seed for `:random.seed`, remove that particular reseeding, and the test would still pass (turns out that in Erlang, "random" is actually deterministic per-process unless manually reseeded), but I liked it being explicit.
 
 Once I made it deterministic and added a passing test, it was time to refactor out the Process dictionary calls and make the code more "functional." The process dict calls... *work*, but they bother me because they're very "object-oriented", reminding me of updating state in some singleton object in Ruby-land. And even though this is a *process* dictionary and guaranteed to be confined to this process, I just didn't like the style- you're basically sticking values "into the aether" in one function and then pulling them "out of the aether" in another function, that's not functional at all, and we're on this bandwagon so why not follow it through, you know?
 
