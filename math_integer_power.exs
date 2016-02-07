@@ -32,17 +32,18 @@ defmodule Math.Integer do
   def ipow(base, exp) when is_integer(base) and is_integer(exp) and base > 0 and exp > -1 do
     # If the estimated number of answer digits is greater than Erlang can handle, use slower implementation
     if ((:math.log(base)/:math.log(10)) * exp + 1) <= @max_num_native_base10_length do
-      _native_pow(base, exp) # _ipow(1, base, exp)
+      native_pow(base, exp) # _ipow(1, base, exp)
     else
-      _ipow(1, base, exp)
+      algorithmic_pow(base, exp)
     end
   end
 
-  @spec ipow(integer, non_neg_integer) :: integer
-  def ipow(base, exp) when is_integer(base) and is_integer(exp) and exp > -1,
+  @spec algorithmic_pow(integer, non_neg_integer) :: integer
+  def algorithmic_pow(base, exp) when is_integer(base) and is_integer(exp) and exp > -1,
     do: _ipow(1, base, exp)
 
-  defp _native_pow(base, exp) do
+  @spec native_pow(integer, integer) :: integer
+  def native_pow(base, exp) do
     :crypto.mod_pow(base,exp,@nearly_infinite_int_in_a_finite_Erlang_world) |> :crypto.bytes_to_integer
   end
 

@@ -46,28 +46,20 @@ defmodule DamerauLevenshtein do
     current_cost
   end
 
+  def distance("", b, _max_cost, current_cost) do
+    current_cost + String.length(b)
+  end
+
+  def distance(a, "", _max_cost, current_cost) do
+    current_cost + String.length(a)
+  end
+
   @doc """
   two equivalent strings
   """
   def distance(same, same, _max_cost, current_cost) do
     # IO.puts "Remaining strings the same: #{same}"
     current_cost
-  end
-
-  @doc """
-  ran out of characters on first string, add second string length as cost
-  """
-  def distance("", target, max_cost, current_cost) do
-    # IO.puts "First string empty, remaining on second string: #{target}"
-    distance("", "", max_cost, current_cost + String.length(target))
-  end
-
-  @doc """
-  ran out of characters on second string, add remaining first string length as cost
-  """
-  def distance(candidate, "", max_cost, current_cost) do
-    # IO.puts "Second string empty, remaining on first string: #{candidate}"
-    distance("", "", max_cost, current_cost + String.length(candidate))
   end
 
   @doc """
@@ -152,8 +144,12 @@ if System.argv |> List.first == "test" do
       assert 6 == DL.distance("four and", "four score and")
     end
 
+    test "distance against empty string" do
+      assert 7 == DL.distance("testing", "", 4)
+    end
+
     test "distance exceeds max" do
-      assert 5 == DL.distance("testing", "", 4)
+      assert 5 == DL.distance("testing", "a", 4)
     end
 
     test "arbitrary differences taken from other test suites" do
@@ -169,10 +165,10 @@ if System.argv |> List.first == "test" do
     # Optimal string alignment distance special cases:
     # see http://en.wikipedia.org/wiki/Damerau%E2%80%93Levenshtein_distance
     # Damerau-Levenshtein("CA", "ABC") is CA -> AC -> ABC == 2 steps, 1 transpose and 1 insert
-    # test "optimal string distance" do
-    #   # this one is tough! is it necessary? Commented out for now
-    #   assert 2 == DL.distance("CA", "ABC")
-    # end
+    test "optimal string distance" do
+      # this one is tough! is it necessary? Commented out for now
+      assert 2 == DL.distance("CA", "ABC")
+    end
 
     test "d-l equivalence" do
       assert DL.equivalent?("Peter", "Petter", 1)
