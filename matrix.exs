@@ -67,8 +67,37 @@ defmodule Matrix do
   end
 
   def inverse(_matrix) do
-    # oh shit. this rabbit hole goes DEEP
+    # oh shit. this rabbit hole goes DEEP. Will return (?) to this eventually. May have to call out to BLAS etc
+    raise "Not Implemented Yet Due To Nontriviality"
   end
+
+  def zeros(sz) do
+    List.duplicate(List.duplicate(0,sz),sz)
+  end
+  def zeros(rows, cols) do
+    List.duplicate(List.duplicate(0,cols),rows)
+  end
+
+  def ones(sz) do
+    List.duplicate(List.duplicate(1,sz),sz)
+  end
+  def ones(rows,cols) do
+    List.duplicate(List.duplicate(1,cols),rows)
+  end
+
+  def rand(rows, cols) do
+    Enum.map(0..rows-1, fn _ ->
+      for _ <- 0..cols-1, do: :random.uniform
+    end)
+  end
+
+  def identity(sz) do
+    Enum.map(0..sz-1, fn i ->
+      for j <- 0..sz-1, do: (if i==j, do: 1, else: 0)
+    end)
+  end
+  def eye(sz), do: identity(sz)
+
 
 end
 
@@ -112,6 +141,41 @@ if System.argv |> List.first == "test" do
       assert_raise FunctionClauseError, fn -> Matrix.add([[1,2,3],[4,5,6],[7,8,9]],[[1,2],[3,4]]) end
     end
 
+    test "zeros 3x3" do
+      assert Matrix.zeros(3) == [[0,0,0],[0,0,0],[0,0,0]]
+    end
+
+    test "zeros 1x3" do
+      assert Matrix.zeros(1,3) == [[0,0,0]]
+    end
+
+    test "ones 3x3" do
+      assert Matrix.ones(3) == [[1,1,1],[1,1,1],[1,1,1]]
+    end
+
+    test "ones 1x3" do
+      assert Matrix.ones(1,3) == [[1,1,1]]
+    end
+
+    test "identity 3x3" do
+      assert Matrix.identity(3) == [[1,0,0],[0,1,0],[0,0,1]]
+    end
+
+    test "eye 3x3" do
+      assert Matrix.eye(3) == [[1,0,0],[0,1,0],[0,0,1]]
+    end
+
+    test "multiplying a 2x2 by identity matrix works" do
+      assert Matrix.multiply([[1,2],[3,4]],Matrix.eye(2)) == [[1,2],[3,4]]
+    end
+
+    test "random 3x2 matrix" do
+      # note: thanks to how Erlang behaves with regards to pseudorandoms, this should always be deterministic.
+      # If it ever fails, then check the docs on :random (or whatever was used) to see what changed.
+      # Most likely you'll just have to copy and paste the new random values here to revalidate this assertion
+      assert Matrix.rand(3,2) == [[0.4435846174457203, 0.7230402056221108], [0.94581636451987, 0.5014907142064751], [0.311326754804393, 0.597447524783298]]
+    end
+
   end
 end
 
@@ -125,4 +189,7 @@ if System.argv |> List.first == "perf" do
   t = Time.now
   Enum.each(1..iters, fn(_) -> Matrix.transpose([[1,2,3],[4,5,6],[7,8,9]]) end)
   IO.puts "elapsed time #{Time.now - t} secs for #{iters} iterations of a 3x3 matrix transpose"
+  t = Time.now
+  Enum.each(1..iters, fn(_) -> Matrix.multiply([[1,2,3],[4,5,6],[7,8,9]],[[1,2,3],[4,5,6],[7,8,9]]) end)
+  IO.puts "elapsed time #{Time.now - t} secs for #{iters} iterations of a 3x3 x 3x3 matrix multiply"
 end
