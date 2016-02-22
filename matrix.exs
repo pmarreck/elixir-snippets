@@ -14,8 +14,21 @@ defmodule Matrix do
     Enum.count(first_row)
   end
 
-  def num_rows(a) when is_list(a) do
+  def num_rows(a = [h | _]) when is_list(h) do
     Enum.count(a)
+  end
+
+  def size(a = [h | _]) when is_list(h) do
+    Enum.max([num_rows(a), num_cols(a)])
+  end
+
+  # count row size
+  def size(a = [h | _], 1) when is_list(h) do
+    num_rows(a)
+  end
+  # count column size
+  def size(a = [h | _], 2) when is_list(h) do
+    num_cols(a)
   end
 
   # entry point /2 signature for multiply
@@ -64,6 +77,38 @@ defmodule Matrix do
   end
   def subtract([], []) do
     []
+  end
+
+  # apply an fn to every element
+  def arrayfun(a = [h | t], func) when is_list(a) and is_list(h) and is_function(func) do
+    [Enum.map(h, func) | arrayfun(t, func)]
+  end
+  # terminal case
+  def arrayfun([], _), do: []
+
+  # sigmoid function, number argument
+  def sigmoid(n) when is_number(n) do
+    1/(1+:math.exp(-n))
+  end
+  # sigmoid function, matrix argument
+  def sigmoid(a = [h | _]) when is_list(h) do
+    arrayfun(a, &sigmoid/1)
+  end
+
+  # vector sum
+  def sum(a = [h]) when is_list(h) do
+    Enum.reduce(h, 0, fn(x,acc)->x+acc end)
+  end
+  def sum(a = [h | t]) when is_list(h) and is_list(t) and length(h)==1 do
+    sum(transpose(a))
+  end
+
+  # vector product
+  def prod(a = [h]) when is_list(h) do
+    Enum.reduce(h, 1, fn(x,acc)->x*acc end)
+  end
+  def prod(a = [h | t]) when is_list(h) and is_list(t) and length(h)==1 do
+    prod(transpose(a))
   end
 
   def inverse(_matrix) do
@@ -176,6 +221,41 @@ if System.argv |> List.first == "test" do
       assert Matrix.rand(3,2) == [[0.4435846174457203, 0.7230402056221108], [0.94581636451987, 0.5014907142064751], [0.311326754804393, 0.597447524783298]]
     end
 
+    test "size of 3x2 == 3 and 1x4 == 4" do
+      assert Matrix.size([[1,2],[3,4],[5,6]]) == 3
+      assert Matrix.size([[1,2,3,4]]) == 4
+    end
+
+    test "size of 3x2 matrix specifying which dimension" do
+      assert Matrix.size([[1,2],[3,4],[5,6]],1) == 3
+      assert Matrix.size([[1,2],[3,4],[5,6]],2) == 2
+    end
+
+    test "apply a function to every element" do
+      assert Matrix.arrayfun([[2,4,6,8],[10,12,14,16]], fn x -> x/2 end) == [[1,2,3,4],[5,6,7,8]]
+    end
+
+    test "sigmoid function, number arg" do
+      assert Matrix.sigmoid(0) == 0.5
+      assert Matrix.sigmoid(1) == 0.7310585786300049
+    end
+
+    test "sigmoid function, matrix arg" do
+      assert Matrix.sigmoid([[0,1],[1,0]]) == [[0.5,0.7310585786300049],[0.7310585786300049,0.5]]
+    end
+
+    test "sum of a vector" do
+      assert Matrix.sum([[1,2,3]]) == 6
+      assert Matrix.sum([[1],[2],[3]]) == 6
+      assert_raise FunctionClauseError, fn -> Matrix.sum([[1,2],[3,4]]) end
+    end
+
+    test "product of a vector" do
+      assert Matrix.prod([[2,4,6]]) == 48
+      assert Matrix.prod([[2],[4],[6]]) == 48
+      assert_raise FunctionClauseError, fn -> Matrix.prod([[1,2],[3,4]]) end
+    end
+
   end
 end
 
@@ -192,4 +272,9 @@ if System.argv |> List.first == "perf" do
   t = Time.now
   Enum.each(1..iters, fn(_) -> Matrix.multiply([[1,2,3],[4,5,6],[7,8,9]],[[1,2,3],[4,5,6],[7,8,9]]) end)
   IO.puts "elapsed time #{Time.now - t} secs for #{iters} iterations of a 3x3 x 3x3 matrix multiply"
+  a = Matrix.rand(1000,1000)
+  b = Matrix.rand(1000,1000)
+  t = Time.now
+  Enum.each(1..10, fn(_) -> Matrix.multiply(a,b) end)
+  IO.puts "elapsed time #{Time.now - t} secs for #{10} iterations of a 1000x1000 x 1000x1000 matrix multiply"
 end
