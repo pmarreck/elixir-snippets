@@ -96,20 +96,69 @@ defmodule Matrix do
   end
 
   # vector sum
-  def sum(a = [h]) when is_list(h) do
+  def sum([h]) when is_list(h) do
     Enum.reduce(h, 0, fn(x,acc)->x+acc end)
   end
+
   def sum(a = [h | t]) when is_list(h) and is_list(t) and length(h)==1 do
     sum(transpose(a))
   end
 
   # vector product
-  def prod(a = [h]) when is_list(h) do
+  def prod([h]) when is_list(h) do
     Enum.reduce(h, 1, fn(x,acc)->x*acc end)
   end
+
   def prod(a = [h | t]) when is_list(h) and is_list(t) and length(h)==1 do
     prod(transpose(a))
   end
+
+  # max of a row vector
+  def max([h]) when is_list(h) do
+    Enum.max(h)
+  end
+
+  # max of a column vector
+  def max(a = [h | t]) when is_list(h) and is_list(t) and length(h)==1 do
+    max(transpose(a))
+  end
+
+  # max of a matrix
+  def max(a = [h | t]) when is_list(h) and is_list(t) do
+    # this could probably be rewritten to be more efficient...
+    transpose(Enum.map(transpose(a), &([Enum.max(&1)])))
+  end
+
+  # max of a matrix specifying dimension
+  def max(a = [h | t], 1) when is_list(h) and is_list(t) do
+    Enum.map(a, &([Enum.max(&1)]))
+  end
+
+  def max(a = [h | t], 2) when is_list(h) and is_list(t) do
+    # default
+    max(a)
+  end
+
+  # unrolls a matrix into a 1 x n vector
+  # note: taking advantage of Enum.concat does a :lists.reverse which may be suboptimal
+  def unroll(a = [h | _]) when is_list(h) do
+    [Enum.concat(a)]
+  end
+
+  # transpose column vectors to row vector first
+  def reshape(a = [h | t], rows, cols) when is_list(h) and is_list(t) and length(h)==1 and length(a) > 1 do
+    reshape(transpose(a), rows, cols)
+  end
+  # reshape a vector into a matrix
+  # note: taking advantage of Enum.split does two :lists.reverse'als and may be suboptimal
+  def reshape([h], rows, cols) when is_list(h) and rows > 0 and cols > 0 do
+    {first, rest} = Enum.split(h, cols)
+    [first | reshape([rest], rows-1, cols)]
+  end
+  # end case(s)
+  def reshape(_,rows,_) when rows == 0, do: []
+  def reshape([], _, _), do: []
+
 
   def inverse(_matrix) do
     # oh shit. this rabbit hole goes DEEP. Will return (?) to this eventually. May have to call out to BLAS etc
@@ -227,8 +276,9 @@ if System.argv |> List.first == "test" do
     end
 
     test "size of 3x2 matrix specifying which dimension" do
-      assert Matrix.size([[1,2],[3,4],[5,6]],1) == 3
-      assert Matrix.size([[1,2],[3,4],[5,6]],2) == 2
+      m = [[1,2],[3,4],[5,6]]
+      assert Matrix.size(m, 1) == 3
+      assert Matrix.size(m, 2) == 2
     end
 
     test "apply a function to every element" do
@@ -256,6 +306,53 @@ if System.argv |> List.first == "test" do
       assert_raise FunctionClauseError, fn -> Matrix.prod([[1,2],[3,4]]) end
     end
 
+    test "max of a vector" do
+      assert Matrix.max([[1,8,5,12,6]]) == 12
+      assert Matrix.max([[1],[8],[5],[12],[6]]) == 12
+    end
+
+    test "max of a matrix" do
+      assert Matrix.max([[1,2],[3,4],[5,6]]) == [[5, 6]]
+    end
+
+    test "max of a matrix specifying dimension" do
+      assert Matrix.max([[1,2],[3,4],[5,6]], 1) == [[2],[4],[6]]
+      assert Matrix.max([[1,2],[3,4],[5,6]], 2) == [[5, 6]]
+    end
+
+    test "max of an entire matrix" do
+      assert Matrix.max(Matrix.max([[2,4,6,8],[10,12,16,14]])) == 16 # [[16]]?
+    end
+
+    # # Octave uses 1-based indexing, which is shite, so we will assume 0-based unless otherwise specified
+    # test "max also returning index in tuple, assume 0-based indexing" do
+    #   assert Matrix.max_with_index([[2,4,6,8]]) == {8, 3}
+    #   assert Matrix.max_with_index([[2],[4],[6],[8]]) == {8, 3}
+    # end
+
+    # test "max also returning index in tuple, specify 0-based indexing" do
+    #   assert Matrix.max_with_index0([[2,4,6,8]]) == {8, 3}
+    #   assert Matrix.max_with_index0([[2],[4],[6],[8]]) == {8, 3}
+    # end
+
+    # test "max also returning index in tuple, specify 1-based indexing" do #like Octave. WHY??
+    #   assert Matrix.max_with_index1([[2,4,6,8]]) == {8, 4}
+    #   assert Matrix.max_with_index1([[2],[4],[6],[8]]) == {8, 4}
+    # end
+
+    test "unroll a matrix into a vector" do
+      assert Matrix.unroll([[2,4,6,8],[10,12,14,16]]) == [[2,4,6,8,10,12,14,16]]
+    end
+
+    test "reshape a vector into a matrix" do
+      assert Matrix.reshape([[1,2,3,4,5,6]],3,2) == [[1,2],[3,4],[5,6]]
+      assert Matrix.reshape([[1],[2],[3],[4],[5],[6]],2,3) == [[1,2,3],[4,5,6]]
+    end
+
+    test "consecutive unroll and reshape preserves" do
+      assert Matrix.reshape(Matrix.unroll([[1,2],[3,4],[5,6]]),3,2) == [[1,2],[3,4],[5,6]]
+    end
+
   end
 end
 
@@ -272,9 +369,10 @@ if System.argv |> List.first == "perf" do
   t = Time.now
   Enum.each(1..iters, fn(_) -> Matrix.multiply([[1,2,3],[4,5,6],[7,8,9]],[[1,2,3],[4,5,6],[7,8,9]]) end)
   IO.puts "elapsed time #{Time.now - t} secs for #{iters} iterations of a 3x3 x 3x3 matrix multiply"
-  a = Matrix.rand(1000,1000)
-  b = Matrix.rand(1000,1000)
+  a = Matrix.rand(100,100)
+  b = Matrix.rand(100,100)
   t = Time.now
-  Enum.each(1..10, fn(_) -> Matrix.multiply(a,b) end)
-  IO.puts "elapsed time #{Time.now - t} secs for #{10} iterations of a 1000x1000 x 1000x1000 matrix multiply"
+  iters = 100
+  Enum.each(1..iters, fn(_) -> Matrix.multiply(a,b) end)
+  IO.puts "elapsed time #{Time.now - t} secs for #{iters} iterations of a 100x100 x 100x100 matrix multiply"
 end
