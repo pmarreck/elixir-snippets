@@ -16,6 +16,23 @@ defmodule RLE do
     _encode( tail, [ a | result ] )
   end
 
+  def decode(list), do: _decode(list, [])
+
+  defp _decode([], result), do: Enum.reverse(result)
+
+  defp _decode([{_, 0} | tail ], result) do
+    _decode(tail, result)
+  end
+
+  defp _decode([{a, n} | tail ], result) do
+    _decode([{a, n-1} | tail], [ a | result ] )
+  end
+
+  defp _decode([a | tail ], result) do
+    _decode( tail, [ a | result ] )
+  end
+
 end
 
-IO.inspect RLE.encode([1,2,2,3,3,3,3,4,5,6,6,7,8,7,8,8,8,9,10])
+# a test
+RLE.encode([1,2,2,3,3,3,3,4,5,6,6,7,8,7,8,8,8,9,10]) == RLE.decode([1, {2, 2}, {3, 4}, 4, 5, {6, 2}, 7, 8, 7, {8, 3}, 9, 10])
