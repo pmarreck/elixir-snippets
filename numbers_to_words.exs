@@ -271,6 +271,6 @@ if System.argv |> List.first == "bm" do
     end
   end
   BM.go(fn ->
-    NumbersToWords.parse(:random.uniform(999999999999999999999))
+    NumbersToWords.parse(:rand.uniform(999999999999999999999))
   end)
 end

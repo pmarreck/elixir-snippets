@@ -2,7 +2,7 @@ defmodule Parallel do
   # Allows mapping over a collection using N parallel processes
   def pmap(collection, func) do
     # Get this process's PID
-    me = self
+    me = self()
     collection
     |>
     Enum.map(fn (elem) ->
@@ -12,7 +12,7 @@ defmodule Parallel do
       # - Call up the parent process
       # - Send the parent its PID and its result
       # Each call to spawn_link returns the child PID immediately.
-      spawn_link fn -> (send me, { self, func.(elem) }) end
+      spawn_link fn -> (send me, { self(), func.(elem) }) end
     end) |>
     # Here we have the complete list of child PIDs. We don't yet know
     # which, if any, have completed their work

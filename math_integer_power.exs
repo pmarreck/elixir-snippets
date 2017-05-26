@@ -28,6 +28,9 @@ defmodule Math.Integer do
     228886641
 
   """
+
+  def ipow(0,0), do: 1
+
   @spec ipow(pos_integer, non_neg_integer) :: integer
   def ipow(base, exp) when is_integer(base) and is_integer(exp) and base > 0 and exp > -1 do
     # If the estimated number of answer digits is greater than Erlang can handle, use slower implementation
@@ -36,6 +39,11 @@ defmodule Math.Integer do
     else
       algorithmic_pow(base, exp)
     end
+  end
+
+  @spec ipow(integer, non_neg_integer) :: integer
+  def ipow(base, exp) when is_integer(base) and is_integer(exp) and exp > -1 do
+    algorithmic_pow(base, exp)
   end
 
   @spec algorithmic_pow(integer, non_neg_integer) :: integer
