@@ -13,3 +13,4 @@ defmodule FactorialWithTCORecursion do
   end
 end
 
+FactorialWithoutTCORecursion.of(200000)
