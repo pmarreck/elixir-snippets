@@ -1,5 +1,5 @@
-defmodule BitCounter do
-  use Bitwise, only_operators: true
+defmodule Population do
+  # use Bitwise, only_operators: true
 
   # def count(int) do
   #   count(int, 0)
@@ -24,12 +24,12 @@ if System.argv |> List.first == "test" do
 
   defmodule BitCounterTest do
     use ExUnit.Case, async: true
-    alias BitCounter, as: BC
+    alias Population, as: P
 
     # counts easily confirmed via Integer.digits(num, 2)
 
     test "bit counts of 8, 5 and 69 sum to 6" do
-      assert 6 == BC.count(8) + BC.count(5) + BC.count(69)
+      assert 6 == P.count(8) + P.count(5) + P.count(69)
     end
 
   end

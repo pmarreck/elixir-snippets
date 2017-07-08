@@ -103,6 +103,14 @@ defmodule RPNForthThing do
     end
   end
 
+  # quoted string output
+  def compute([".\"" | remaining_input ], data_stack, loop_stack, dict) do
+    {to_print, [_closequote | rest]} = Enum.split_while(remaining_input, fn(ins) -> ins != "\"" end)
+    IO.write(Enum.join(to_print, " "))
+    IO.write(" ")
+    compute(rest, data_stack, loop_stack, dict)
+  end
+
   def compute([ "+" | remaining_input], [y, x | data_stack], loop_stack, dict) do
     compute(remaining_input, [x + y | data_stack], loop_stack, dict)
   end
@@ -307,21 +315,6 @@ defmodule RPNForthThing do
     {_, [")" | remainder]} = Enum.split_while(remaining_input, fn(ins) -> ins != ")" end)
     compute(remainder, data_stack, loop_stack, dict)
   end
-
-  # Do loops
-  # def compute([ "do" | remainder ], [x, y | data_stack], loop_stack, dict) do
-  #   {the_loop, ["loop" | remainder]} = Enum.split_while(remainder, fn(ins) -> (ins != "loop" && ins != "do") end)
-  #   # So the forth spec says the do loop goes up to but NOT INCLUDING the last number
-  #   # But in my case the first number can be bigger than the last, so it counts down
-  #   # Call it an enhancement
-  #   # But that means we have to increment or decrement appropriately based on which is bigger.
-  #   end_num = if x < y, do: y-1, else: y+1
-  #   unrolled_loop = Enum.map x..end_num, fn i ->
-  #     # replace each "i" in the loop context with the index value
-  #     Enum.map(the_loop, fn(maybe_i) -> if maybe_i == "i", do: i, else: maybe_i end)
-  #   end
-  #   compute(List.flatten([unrolled_loop | remainder]), data_stack, loop_stack, dict)
-  # end
 
   # new definitions!
   def compute([ ":", name | remaining_input ], data_stack, loop_stack, dict) do
@@ -620,6 +613,28 @@ if System.argv |> List.first == "test" do
     test "floor5" do
       assert RPNForthThing.initialize(~w[ : FLOOR5 ( n -- n' ) 1- 5 max ; 1 FLOOR5]) == 5
       assert RPNForthThing.initialize(~w[ : FLOOR5 ( n -- n' ) 1- 5 max ; 10 FLOOR5]) == 9
+    end
+
+    test "inline string output" do
+      assert capture_io(fn ->
+        RPNForthThing.initialize(~w[
+          ." this is a test "
+        ])
+      end) == "this is a test "
+    end
+
+    test "eggsize computation with nested IFs and quoted text" do
+      assert RPNForthThing.initialize(~w[
+        : EGGSIZE
+        DUP  18 < IF  ." reject "      else
+        DUP  21 < IF  ." small "       else
+        DUP  24 < IF  ." medium "      else
+        DUP  27 < IF  ." large "       else
+        DUP  30 < IF  ." extra large " else
+                      ." error "
+        then then then then then DROP ;
+        29 EGGSIZE
+      ]) == "extra large "
     end
 
   end
