@@ -30,6 +30,11 @@ defmodule Tail do
     do_trunc(<<accum::binary, h::utf8>>, rest, ending)
   end
 
+  def rstrip(text, strip_char \\ " ") do
+    do_rstrip(strip_char, "", "", text)
+  end
+
+  defp do_rstrip(sc, whitespace, accum, text) do
 
 end
 
