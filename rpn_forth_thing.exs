@@ -27,7 +27,7 @@ defmodule RPNForthThing do
     initialize(System.argv)
   end
   def initialize(input) when is_binary(input) do
-    initialize(String.split(input, " ", trim: true))
+    initialize(String.split(input, ~r/\s+/))
   end
   def initialize(input) when is_list(input) do
     input |> normalize |> compute([], [], Map.new)
@@ -57,167 +57,226 @@ defmodule RPNForthThing do
     end
   end
 
+  # when no instructions left and one item on data stack, just return that
   def compute([], [last_val], _, _) do
     last_val
   end
 
+  # when no items left on either instruction or data stack, just bail
   def compute([], [], _, _) do
     # just bail
   end
 
-  def compute([ "end" | _ ], data_stack, [], _) do
-    if Enum.count(data_stack) == 1 do
-      List.first(data_stack)
-    else
-      data_stack
-    end
+  # when no instructions left, just return data stack
+  def compute([], data_stack, _, _) when is_list(data_stack) do
+    data_stack
   end
 
-  def compute([ "do" | remainder ], [x, y | data_stack], loop_stack, dict) do
+  def compute([ "end" | _ ], [last_elem_in_data_stack], [], _) do
+    last_elem_in_data_stack
+  end
+
+  def compute([ "end" | _ ], data_stack, [], _) when is_list(data_stack) do
+    data_stack
+  end
+
+  def compute([ "do" | remainder ], [x, y | data_stack], return_stack, dict) do
     # The way this works is:
-    # DO moves the index (0) and the control (5) over to the loop stack.
-    # I copies the top of the loop stack to the data stack.
-    # LOOP increments the index (top of loop stack).
-    # If the index is less than the control (one below the top of loop stack),
+    # DO moves the index (0) and the control (5) over to the return stack.
+    # I copies the top of the return stack to the data stack.
+    # LOOP increments the index (top of return stack).
+    # If the index is less than the control (one below the top of return stack),
     # then it reruns the commands from DO back to LOOP.
     # If the index is >=, then it pops the index and control from the
-    # loop stack, and control resumes as normal.
-    compute(remainder, data_stack, [x, y, %{do: remainder} | loop_stack], dict)
+    # return stack, and control resumes as normal.
+    compute(remainder, data_stack, [x, y, %{do: remainder} | return_stack], dict)
   end
 
-  def compute([ "i" | remainder ], data_stack, [x, _y, %{do: _do_block} | _rest_of_loop_stack] = loop_stack, dict) do
-    compute(remainder, [x | data_stack], loop_stack, dict)
+  def compute([ "i" | remainder ], data_stack, [x, _y, %{do: _do_block} | _rest_of_return_stack] = return_stack, dict) do
+    compute(remainder, [x | data_stack], return_stack, dict)
   end
 
-  def compute([ "j" | remainder ], data_stack, [_x, _y, %{do: _do_block}, z | _rest_of_loop_stack] = loop_stack, dict) do
-    compute(remainder, [z | data_stack], loop_stack, dict)
+  # note implementation difference/similarity to "i". "i" assumes a loop already on the return stack
+  # (and pattern-matches on that), r@ does not
+  def compute([ "r@" | remainder ], data_stack, [x | _rest_of_return_stack] = return_stack, dict) do
+    compute(remainder, [x | data_stack], return_stack, dict)
+  end
+
+  def compute([ ">r" | remainder ], [n | data_stack], return_stack, dict) do
+    compute(remainder, data_stack, [n | return_stack], dict)
+  end
+
+  def compute([ "r>" | remainder ], data_stack, [n | return_stack], dict) do
+    compute(remainder, [n | data_stack], return_stack, dict)
+  end
+
+  def compute([ "j" | remainder ], data_stack, [_x, _y, %{do: _do_block}, z | _rest_of_return_stack] = return_stack, dict) do
+    compute(remainder, [z | data_stack], return_stack, dict)
   end
 
   # loops. holy crap NESTED LOOPS WORK.
-  def compute([ "loop" | remainder ], data_stack, [x, y, %{do: do_block} | loop_stack], dict) do
+  def compute([ "loop" | remainder ], data_stack, [x, y, %{do: do_block} | return_stack], dict) do
     x = x + 1
     if x < y do
-      compute(do_block, data_stack, [x, y, %{do: do_block} | loop_stack], dict)
+      compute(do_block, data_stack, [x, y, %{do: do_block} | return_stack], dict)
     else
-      compute(remainder, data_stack, loop_stack, dict)
+      compute(remainder, data_stack, return_stack, dict)
     end
   end
 
   # quoted string output
-  def compute([".\"" | remaining_input ], data_stack, loop_stack, dict) do
+  def compute([".\"" | remaining_input ], data_stack, return_stack, dict) do
     {to_print, [_closequote | rest]} = Enum.split_while(remaining_input, fn(ins) -> ins != "\"" end)
     IO.write(Enum.join(to_print, " "))
-    IO.write(" ")
-    compute(rest, data_stack, loop_stack, dict)
+    # IO.write(" ") # is this necessary to match the spec?
+    compute(rest, data_stack, return_stack, dict)
   end
 
-  def compute([ "+" | remaining_input], [y, x | data_stack], loop_stack, dict) do
-    compute(remaining_input, [x + y | data_stack], loop_stack, dict)
+  def compute([ "+" | remaining_input], [y, x | data_stack], return_stack, dict) do
+    compute(remaining_input, [x + y | data_stack], return_stack, dict)
   end
 
-  def compute([ "-" | remaining_input], [y, x | data_stack], loop_stack, dict) do
-    compute(remaining_input, [x - y | data_stack], loop_stack, dict)
+  def compute([ "2+" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [x + 2 | data_stack], return_stack, dict)
   end
 
-  def compute([ "*/" | remaining_input], [x | data_stack], loop_stack, dict) do
-    compute(["*", x, "/" | remaining_input], data_stack, loop_stack, dict)
+  def compute([ "-" | remaining_input], [y, x | data_stack], return_stack, dict) do
+    compute(remaining_input, [x - y | data_stack], return_stack, dict)
   end
 
-  def compute([ "*" | remaining_input], [y, x | data_stack], loop_stack, dict) do
-    compute(remaining_input, [x * y | data_stack], loop_stack, dict)
+  def compute([ "2-" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [x - 2 | data_stack], return_stack, dict)
   end
 
-  def compute([ "/" | remaining_input], [y, x | data_stack], loop_stack, dict) do
-    compute(remaining_input, [trunc(x / y) | data_stack], loop_stack, dict)
+  def compute([ "*/" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(["*", x, "/" | remaining_input], data_stack, return_stack, dict)
   end
 
-  def compute([ "**" | remaining_input], [y, x | data_stack], loop_stack, dict) do
-    compute(remaining_input, [trunc(:math.pow(x, y)) | data_stack], loop_stack, dict)
+  def compute([ "/mod" | remaining_input], [x, y | data_stack], return_stack, dict) do
+    compute(remaining_input, [div(y, x), rem(y, x) | data_stack], return_stack, dict)
+  end
+
+  def compute([ "*/mod" | remaining_input], [x, y, z | data_stack], return_stack, dict) do
+    compute(remaining_input, [rem(x*y, z), div(x*y, z) | data_stack], return_stack, dict)
+  end
+
+  def compute([ "*" | remaining_input], [y, x | data_stack], return_stack, dict) do
+    compute(remaining_input, [x * y | data_stack], return_stack, dict)
+  end
+
+  def compute([ "2*" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [x * 2 | data_stack], return_stack, dict)
+  end
+
+  def compute([ "/" | remaining_input], [y, x | data_stack], return_stack, dict) do
+    compute(remaining_input, [trunc(x / y) | data_stack], return_stack, dict)
+  end
+
+  def compute([ "2/" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [trunc(x / 2) | data_stack], return_stack, dict)
+  end
+
+  def compute([ "**" | remaining_input], [y, x | data_stack], return_stack, dict) do
+    compute(remaining_input, [trunc(:math.pow(x, y)) | data_stack], return_stack, dict)
   end
 
   # note: allowing these conflicts with integer-only arithmetic
-  def compute([ "pi" | remaining_input], data_stack, loop_stack, dict) do
-    compute(remaining_input, [:math.pi | data_stack], loop_stack, dict)
+  def compute([ "pi" | remaining_input], data_stack, return_stack, dict) do
+    compute(remaining_input, [:math.pi | data_stack], return_stack, dict)
   end
 
-  def compute([ "sin" | remaining_input], [x | data_stack], loop_stack, dict) do
-    compute(remaining_input, [:math.sin(x) | data_stack], loop_stack, dict)
+  def compute([ "sin" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [:math.sin(x) | data_stack], return_stack, dict)
   end
 
-  def compute([ "cos" | remaining_input], [x | data_stack], loop_stack, dict) do
-    compute(remaining_input, [:math.cos(x) | data_stack], loop_stack, dict)
+  def compute([ "cos" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [:math.cos(x) | data_stack], return_stack, dict)
   end
 
-  def compute([ "tan" | remaining_input], [x | data_stack], loop_stack, dict) do
-    compute(remaining_input, [:math.tan(x) | data_stack], loop_stack, dict)
+  def compute([ "tan" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [:math.tan(x) | data_stack], return_stack, dict)
   end
 
-  def compute([ "sqrt" | remaining_input], [x | data_stack], loop_stack, dict) do
-    compute(remaining_input, [:math.sqrt(x) | data_stack], loop_stack, dict)
+  def compute([ "sqrt" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [:math.sqrt(x) | data_stack], return_stack, dict)
   end
 
-  def compute([ "drop" | remaining_input], [_ | data_stack], loop_stack, dict) do
-    compute(remaining_input, data_stack, loop_stack, dict)
+  def compute([ "drop" | remaining_input], [_ | data_stack], return_stack, dict) do
+    compute(remaining_input, data_stack, return_stack, dict)
   end
 
-  def compute([ "dup" | remaining_input], [x | data_stack], loop_stack, dict) do
-    compute(remaining_input, [x, x | data_stack], loop_stack, dict)
+  def compute([ "dup" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [x, x | data_stack], return_stack, dict)
   end
 
-  def compute([ "swap" | remaining_input], [y, x | data_stack], loop_stack, dict) do
-    compute(remaining_input, [x, y | data_stack], loop_stack, dict)
+  def compute([ "swap" | remaining_input], [y, x | data_stack], return_stack, dict) do
+    compute(remaining_input, [x, y | data_stack], return_stack, dict)
+  end
+
+  def compute([ "over" | remaining_input], [x, y | data_stack], return_stack, dict) do
+    compute(remaining_input, [y, x, y | data_stack], return_stack, dict)
   end
 
   # In-place decrement
-  def compute([ "1-" | remaining_input], [x | data_stack], loop_stack, dict) do
-    compute(remaining_input, [(x - 1) | data_stack], loop_stack, dict)
+  def compute([ "1-" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [(x - 1) | data_stack], return_stack, dict)
   end
 
   # In-place increment
-  def compute([ "1+" | remaining_input], [x | data_stack], loop_stack, dict) do
-    compute(remaining_input, [(x + 1) | data_stack], loop_stack, dict)
+  def compute([ "1+" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [(x + 1) | data_stack], return_stack, dict)
   end
 
   # In-place negation
-  def compute([ "@-" | remaining_input], [x | data_stack], loop_stack, dict) do
-    compute(remaining_input, [-x | data_stack], loop_stack, dict)
+  def compute([ "@-" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [-x | data_stack], return_stack, dict)
+  end
+
+  # negate (similar)
+  def compute([ "negate" | remaining_input], [n | data_stack], return_stack, dict) do
+    compute(remaining_input, [-n | data_stack], return_stack, dict)
   end
 
   # random numbers
-  def compute([ "rand" | remaining_input], data_stack, loop_stack, dict) do
-    compute(remaining_input, [:rand.uniform | data_stack], loop_stack, dict)
+  def compute([ "rand" | remaining_input], data_stack, return_stack, dict) do
+    compute(remaining_input, [:rand.uniform | data_stack], return_stack, dict)
   end
 
   # max
-  def compute([ "max" | remaining_input], [a, b | data_stack], loop_stack, dict) do
+  def compute([ "max" | remaining_input], [a, b | data_stack], return_stack, dict) do
     max = case a < b do
       true -> b
       false -> a
     end
-    compute(remaining_input, [max | data_stack], loop_stack, dict)
+    compute(remaining_input, [max | data_stack], return_stack, dict)
   end
 
   # min
-  def compute([ "min" | remaining_input], [a, b | data_stack], loop_stack, dict) do
+  def compute([ "min" | remaining_input], [a, b | data_stack], return_stack, dict) do
     min = case a < b do
       true -> a
       false -> b
     end
-    compute(remaining_input, [min | data_stack], loop_stack, dict)
+    compute(remaining_input, [min | data_stack], return_stack, dict)
+  end
+
+  # abs
+  def compute([ "abs" | remaining_input], [n | data_stack], return_stack, dict) do
+    compute(remaining_input, [abs(n) | data_stack], return_stack, dict)
   end
 
   # inspection. just spits out the remaining instructions, and the data_stack and dict states
   # Sort of, shockingly simple?
-  def compute([ "inspect" | remaining_input], data_stack, loop_stack, dict) do
+  def compute([ "inspect" | remaining_input], data_stack, return_stack, dict) do
     IO.puts "Remaining instructions:"
     IO.inspect remaining_input
     IO.puts "Data Stack:"
     IO.inspect data_stack
-    IO.puts "Loop Stack:"
-    IO.inspect loop_stack
+    IO.puts "Return Stack:"
+    IO.inspect return_stack
     IO.puts "Dictionary:"
     IO.inspect dict
-    compute(remaining_input, data_stack, loop_stack, dict)
+    compute(remaining_input, data_stack, return_stack, dict)
   end
 
   # Logic/Booleans
@@ -225,50 +284,56 @@ defmodule RPNForthThing do
   # anything else is true... although typically a 1 is returned
   # for truths, boolean tests should compare with 0 (falsity) instead of 1
 
-  def compute([ "=" | remaining_input], [y, x | data_stack], loop_stack, dict) do
+  def compute([ "=" | remaining_input], [y, x | data_stack], return_stack, dict) do
     out = if y == x, do: 1, else: 0
-    compute(remaining_input, [out | data_stack], loop_stack, dict)
+    compute(remaining_input, [out | data_stack], return_stack, dict)
   end
 
-  def compute([ "<>" | remaining_input], [y, x | data_stack], loop_stack, dict) do
+  def compute([ "<>" | remaining_input], [y, x | data_stack], return_stack, dict) do
     out = if y != x, do: 1, else: 0
-    compute(remaining_input, [out | data_stack], loop_stack, dict)
+    compute(remaining_input, [out | data_stack], return_stack, dict)
   end
 
-  def compute([ "<" | remaining_input], [y, x | data_stack], loop_stack, dict) do
+  def compute([ "<" | remaining_input], [y, x | data_stack], return_stack, dict) do
     out = if x < y, do: 1, else: 0
-    compute(remaining_input, [out | data_stack], loop_stack, dict)
+    compute(remaining_input, [out | data_stack], return_stack, dict)
   end
 
-  def compute([ ">" | remaining_input], [y, x | data_stack], loop_stack, dict) do
+  def compute([ "<=" | remaining_input], [y, x | data_stack], return_stack, dict) do
+    out = if x <= y, do: 1, else: 0
+    compute(remaining_input, [out | data_stack], return_stack, dict)
+  end
+
+  def compute([ ">" | remaining_input], [y, x | data_stack], return_stack, dict) do
     out = if x > y, do: 1, else: 0
-    compute(remaining_input, [out | data_stack], loop_stack, dict)
+    compute(remaining_input, [out | data_stack], return_stack, dict)
   end
 
-  def compute([ "and" | remaining_input], [y, x | data_stack], loop_stack, dict) do
+  def compute([ ">=" | remaining_input], [y, x | data_stack], return_stack, dict) do
+    out = if x >= y, do: 1, else: 0
+    compute(remaining_input, [out | data_stack], return_stack, dict)
+  end
+
+  def compute([ "and" | remaining_input], [y, x | data_stack], return_stack, dict) do
     out = if ((y != 0) and (x != 0)), do: 1, else: 0
-    compute(remaining_input, [out | data_stack], loop_stack, dict)
+    compute(remaining_input, [out | data_stack], return_stack, dict)
   end
 
-  def compute([ "or" | remaining_input], [y, x | data_stack], loop_stack, dict) do
+  def compute([ "or" | remaining_input], [y, x | data_stack], return_stack, dict) do
     out = if ((y != 0) or (x != 0)), do: 1, else: 0
-    compute(remaining_input, [out | data_stack], loop_stack, dict)
+    compute(remaining_input, [out | data_stack], return_stack, dict)
   end
 
-  def compute([ "not" | remaining_input], [x | data_stack], loop_stack, dict) do
+  def compute([ "not" | remaining_input], [x | data_stack], return_stack, dict) do
     out = if x == 0, do: 1, else: 0
-    compute(remaining_input, [out | data_stack], loop_stack, dict)
+    compute(remaining_input, [out | data_stack], return_stack, dict)
   end
-
-  # def compute([ "?" | remaining_input], data_stack, loop_stack, dict) do
-  #   compute([ "if" | remaining_input], data_stack, loop_stack, dict)
-  # end
 
   # If-Else-Then
   # Note that this is a prefix function!
   # Usage: test_val is on top of data_stack. "if <then-clause> else <else-clause> then"
   # puts then-clause on top of instruction data_stack if test_val != 0, else-clause if test_val == 0.
-  def compute([ "if" | remaining_input], [x | data_stack], loop_stack, dict) do
+  def compute([ "if" | remaining_input], [x | data_stack], return_stack, dict) do
     {if_and_possibly_else_clause, ["then" | remaining_input]} = Enum.split_while(remaining_input, fn(ins) -> ins != "then" end)
     {if_clause, else_clause} =
       if Enum.any?(if_and_possibly_else_clause, fn ins -> ins == "else" end) do
@@ -279,9 +344,9 @@ defmodule RPNForthThing do
         {if_and_possibly_else_clause, []}
       end
     if x != 0 do
-      compute(if_clause ++ remaining_input, data_stack, loop_stack, dict)
+      compute(if_clause ++ remaining_input, data_stack, return_stack, dict)
     else
-      compute(else_clause ++ remaining_input, data_stack, loop_stack, dict)
+      compute(else_clause ++ remaining_input, data_stack, return_stack, dict)
     end
   end
 
@@ -291,69 +356,127 @@ defmodule RPNForthThing do
   # Instead I'll use rot3^ and rot3v to just manipulate the top 3 elements of the data_stack.
 
   # This one doesn't work yet because it would be slow as hell
-  # def compute([ :"rot^" | remaining_input], data_stack, loop_stack, dict) do
-  #   compute(remaining_input, ???, loop_stack, dict)
+  # def compute([ :"rot^" | remaining_input], data_stack, return_stack, dict) do
+  #   compute(remaining_input, ???, return_stack, dict)
   # end
 
   # This one works but is likely slow
-  # def compute([ :"rotv" | remaining_input], [head | data_stack], loop_stack, dict) do
-  #   compute(remaining_input, data_stack ++ [head], loop_stack, dict)
+  # def compute([ :"rotv" | remaining_input], [head | data_stack], return_stack, dict) do
+  #   compute(remaining_input, data_stack ++ [head], return_stack, dict)
   # end
 
   # Rotate the top 3 values on the data_stack down (assuming top element is bottom-most, like an RPN calculator)
-  def compute([ "rot3v" | remaining_input], [x, y, z | data_stack], loop_stack, dict) do
-    compute(remaining_input, [y, z, x | data_stack], loop_stack, dict)
+  def compute([ "rot3v" | remaining_input], [x, y, z | data_stack], return_stack, dict) do
+    compute(remaining_input, [y, z, x | data_stack], return_stack, dict)
   end
 
   # Rotate the top 3 values on the data_stack up (assuming top element is bottom-most, like an RPN calculator)
-  def compute([ "rot3^" | remaining_input], [x, y, z | data_stack], loop_stack, dict) do
-    compute(remaining_input, [z, x, y | data_stack], loop_stack, dict)
+  def compute([ "rot3^" | remaining_input], [x, y, z | data_stack], return_stack, dict) do
+    compute(remaining_input, [z, x, y | data_stack], return_stack, dict)
+  end
+
+  # Assume "rot" is equivalent to "rot3^" for now
+  def compute([ "rot" | remaining_input], [x, y, z | data_stack], return_stack, dict) do
+    compute(remaining_input, [z, x, y | data_stack], return_stack, dict)
+  end
+
+  def compute([ "-rot" | remaining_input], data_stack, return_stack, dict) when is_list(data_stack) do
+    compute(["rot", "rot" | remaining_input], data_stack, return_stack, dict)
   end
 
   # Comments
-  def compute([ "(" | remaining_input ], data_stack, loop_stack, dict) do
+  def compute([ "(" | remaining_input ], data_stack, return_stack, dict) do
     {_, [")" | remainder]} = Enum.split_while(remaining_input, fn(ins) -> ins != ")" end)
-    compute(remainder, data_stack, loop_stack, dict)
+    compute(remainder, data_stack, return_stack, dict)
   end
 
   # new definitions!
-  def compute([ ":", name | remaining_input ], data_stack, loop_stack, dict) do
+  def compute([ ":", name | remaining_input ], data_stack, return_stack, dict) do
     {definition, [";" | remainder]} = Enum.split_while(remaining_input, fn(ins) -> ins != ";" end)
-    newdict = Map.put(dict, name, definition)
-    compute(remainder, data_stack, loop_stack, newdict)
+    compute(remainder, data_stack, return_stack, Map.put(dict, name, {:word, definition}))
+  end
+
+  # new variables! (store in dictionary)
+  # ideally in future it will error if it already exists as a name in the dict
+  def compute([ "variable", name | remaining_input ], data_stack, return_stack, dict) do
+    compute(remaining_input, data_stack, return_stack, Map.put(dict, name, {:var, nil}))
+  end
+
+  # new constants!
+  # just, eh, treat as another dictionary entry for now
+  # ideally in future it will error if you try to reassign a constant
+  def compute([ "constant", name | remaining_input ], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, data_stack, return_stack, Map.put(dict, name, {:const, x}))
+  end
+
+  # store value in variable
+  def compute([ "!" | remaining_input ], [name, x | data_stack], return_stack, dict) do
+    if !Map.has_key?(dict, name), do: raise "Variable was not declared first: #{name}"
+    compute(remaining_input, data_stack, return_stack, %{dict | name => {:var, x}})
+  end
+
+  # increment value in variable
+  def compute([ "+!" | remaining_input ], [name, x | data_stack], return_stack, dict) do
+    if !Map.has_key?(dict, name), do: raise "Variable was not declared first: #{name}"
+    if dict[name] == {:var, nil}, do: raise "Variable cannot be incremented without being set first: #{name}"
+    {:var, val} = dict[name]
+    compute(remaining_input, data_stack, return_stack, %{dict | name => {:var, val + x}})
+  end
+
+  # retrieve value from variable
+  def compute([ "@" | remaining_input ], [ name | data_stack], return_stack, dict) do
+    if !Map.has_key?(dict, name), do: raise "Variable is undefined: #{name}"
+    {:var, val} = dict[name]
+    compute(remaining_input, [val | data_stack], return_stack, dict)
   end
 
   # side effects!
   # Prints the binary of an ascii value on the top of the data_stack (without carriage return), popping it
-  def compute([ "emit" | remaining_input], [x | data_stack], loop_stack, dict) do
+  def compute([ "emit" | remaining_input], [x | data_stack], return_stack, dict) do
     IO.write <<x>>
-    compute(remaining_input, data_stack, loop_stack, dict)
+    compute(remaining_input, data_stack, return_stack, dict)
   end
 
   # Prints the literal value of the top of the data_stack, popping it
-  def compute([ "." | remaining_input], [x | data_stack], loop_stack, dict) do
+  def compute([ "." | remaining_input], [x | data_stack], return_stack, dict) do
     IO.write "#{x} "
-    compute(remaining_input, data_stack, loop_stack, dict)
+    compute(remaining_input, data_stack, return_stack, dict)
+  end
+
+  # Outputs the entire data_stack but leaves it alone
+  def compute([ ".s" | remaining_input], data_stack, return_stack, dict) when is_list(data_stack) do
+    data_stack
+    |> Enum.reverse
+    |> Enum.each(fn x -> IO.write "#{x} " end)
+    compute(remaining_input, data_stack, return_stack, dict)
   end
 
   # Emits a carriage return
-  def compute([ "cr" | remaining_input], data_stack, loop_stack, dict) do
+  def compute([ "cr" | remaining_input], data_stack, return_stack, dict) do
     IO.puts ""
-    compute(remaining_input, data_stack, loop_stack, dict)
+    compute(remaining_input, data_stack, return_stack, dict)
   end
 
-  # Dictionary definition lookup and downcasing capitalized command fallthrough
-  def compute([ name | remaining_input], data_stack, loop_stack, dict) when is_binary(name) do
-    cond do
-      Map.has_key?(dict, name)          -> compute(dict[name] ++ remaining_input, data_stack, loop_stack, dict)
-      String.match?(name, ~r/^[A-Z]+$/) -> compute([String.downcase(name) | remaining_input], data_stack, loop_stack, dict)
-      true                              -> raise "Undefined name: #{name}"
+  # Dictionary and variable definition lookup
+  def compute([ name | remaining_input], data_stack, return_stack, dict) when is_binary(name) do
+    {type, val} = if Map.has_key?(dict, name) do
+      dict[name]
+    else
+      {:unk, name}
     end
+    {ri, ds, rs, dict} = case {type, val} do
+      {:word, val} when is_list(val) -> {val ++ remaining_input, data_stack, return_stack, dict}
+      {:var, _} -> {remaining_input, [name | data_stack], return_stack, dict}
+      {:const, val} -> {remaining_input, [val | data_stack], return_stack, dict}
+      {:unk, val} -> {remaining_input, [val | data_stack], return_stack, dict}
+      _           -> raise "Undefined name: #{name}"
+    end
+    compute(ri, ds, rs, dict)
   end
 
   # fallthrough... just passes things through to the data_stack (like numeric values)
-  def compute([n | remaining_input], data_stack, loop_stack, dict) when is_integer(n) or is_float(n) do
-    compute(remaining_input, [n | data_stack], loop_stack, dict)
+  def compute([n | remaining_input], data_stack, return_stack, dict) when is_integer(n) or is_float(n) do
+    compute(remaining_input, [n | data_stack], return_stack, dict)
   end
 
 end
@@ -376,16 +499,32 @@ if System.argv |> List.first == "test" do
       assert RPNForthThing.initialize(~w[1 2 +]) === 3
     end
 
+    test "increment 2" do
+      assert RPNForthThing.initialize(~w[1 2+]) === 3
+    end
+
     test "subtracting 2 numbers" do
       assert RPNForthThing.initialize(~w[3 2 -]) === 1
+    end
+
+    test "decrement 2" do
+      assert RPNForthThing.initialize(~w[2 2-]) === 0
     end
 
     test "multiplying 2 numbers" do
       assert RPNForthThing.initialize(~w[3 2 *]) === 6
     end
 
+    test "multiply by 2" do
+      assert RPNForthThing.initialize(~w[ 3 2* ]) === 6
+    end
+
     test "dividing 2 numbers" do
       assert RPNForthThing.initialize(~w[3 2 /]) === 1
+    end
+
+    test "dividing by 2" do
+      assert RPNForthThing.initialize(~w[ 6 2/ ]) === 3
     end
 
     test "sequence of simple math operations" do
@@ -394,6 +533,14 @@ if System.argv |> List.first == "test" do
 
     test "power" do
       assert RPNForthThing.initialize(~w[ 10 3 ** ]) === 1000
+    end
+
+    test "abs" do
+      assert RPNForthThing.initialize(~w[ -5 abs ]) === 5
+    end
+
+    test "negate" do
+      assert RPNForthThing.initialize(~w[ 5 negate ]) === -5
     end
 
     test "pi" do
@@ -428,6 +575,10 @@ if System.argv |> List.first == "test" do
       assert RPNForthThing.initialize(~w[ 3 6 swap / ]) === 2
     end
 
+    test "over" do
+      assert RPNForthThing.initialize(~w[ 4 5 over ]) == [4, 5, 4]
+    end
+
     test "defining new words" do
       assert RPNForthThing.initialize(~w[ : square dup * ; 5 square ]) === 25
     end
@@ -439,6 +590,8 @@ if System.argv |> List.first == "test" do
       assert RPNForthThing.initialize(~w[ 5 5 <> ]) == 0
       assert RPNForthThing.initialize(~w[ 5 4 < ]) == 0
       assert RPNForthThing.initialize(~w[ 5 4 > ]) != 0
+      assert RPNForthThing.initialize(~w[ 5 5 >= ]) == 1
+      assert RPNForthThing.initialize(~w[ 5 5 <= ]) == 1
     end
 
     test "increment and decrement" do
@@ -455,6 +608,12 @@ if System.argv |> List.first == "test" do
       # assert RPNForthThing.initialize(~w[ 3 5 < ? 33 44 ]) == 33
       assert RPNForthThing.initialize(~w[ 3 5 > if 33 else 44 then ]) == 44
       # assert RPNForthThing.initialize(~w[ 3 5 > ? 33 44 ]) == 44
+    end
+
+    test "nested if else then" do
+      assert capture_io(fn ->
+        RPNForthThing.initialize(~w[ 5 dup 3 < if ." greater " else 7 < if ." lesser " else ." equal " then then ])
+      end) == "lesser"
     end
 
     test "if then, NO else" do
@@ -539,6 +698,12 @@ if System.argv |> List.first == "test" do
       end) == "0 1 2 3 4 5 6 7 8 9 "
     end
 
+    test "print stack (peek)" do
+      assert capture_io(fn ->
+        RPNForthThing.initialize(~w[ 1 2 3 rot .s ])
+      end) == "2 3 1 "
+    end
+
     test "print stars" do
       # example from https://github.com/dsevilla/uForth
       assert capture_io(fn ->
@@ -572,7 +737,7 @@ if System.argv |> List.first == "test" do
     test "looping negative numbers in a definition" do
       assert capture_io(fn ->
         RPNForthThing.initialize(~w[
-          : SAMPLE  -243 -250 DO  I . LOOP ; SAMPLE
+          : SAMPLE  -243 -250 do i . loop ; SAMPLE
         ])
       end) == "-250 -249 -248 -247 -246 -245 -244 "
     end
@@ -580,7 +745,7 @@ if System.argv |> List.first == "test" do
     test "multiplication loop" do
       assert capture_io(fn ->
         RPNForthThing.initialize(~w[
-          : MULTIPLICATIONS  CR 11 1 DO  DUP I * .  LOOP  DROP ; 7 MULTIPLICATIONS
+          : MULTIPLICATIONS  cr 11 1 do  dup i * .  loop  drop ; 7 MULTIPLICATIONS
         ])
       end) == "\n7 14 21 28 35 42 49 56 63 70 "
     end
@@ -593,7 +758,20 @@ if System.argv |> List.first == "test" do
         ])
       end) == "73 "
     end
-    
+
+    test "/mod" do
+      assert capture_io(fn -> RPNForthThing.initialize(~w[
+        22 4 /mod . .
+      ]) end) == "5 2 "
+    end
+
+    # may be wrong
+    test "*/mod" do
+      assert RPNForthThing.initialize(~w[
+        8 10 3 */mod
+      ]) == [6, 3]
+    end
+
     test "rand doesn't error" do
       rand = RPNForthThing.initialize(~w[ rand ])
       assert rand > 0
@@ -620,21 +798,71 @@ if System.argv |> List.first == "test" do
         RPNForthThing.initialize(~w[
           ." this is a test "
         ])
-      end) == "this is a test "
+      end) == "this is a test"
     end
 
     test "eggsize computation with nested IFs and quoted text" do
-      assert RPNForthThing.initialize(~w[
+      assert capture_io(fn -> RPNForthThing.initialize(~w[
         : EGGSIZE
-        DUP  18 < IF  ." reject "      else
-        DUP  21 < IF  ." small "       else
-        DUP  24 < IF  ." medium "      else
-        DUP  27 < IF  ." large "       else
-        DUP  30 < IF  ." extra large " else
+        dup  18 < if  ." reject "      else
+        dup  21 < if  ." small "       else
+        dup  24 < if  ." medium "      else
+        dup  27 < if  ." large "       else
+        dup  30 < if  ." extra large " else
                       ." error "
-        then then then then then DROP ;
+        then then then then then drop ;
         29 EGGSIZE
-      ]) == "extra large "
+      ]) end) == "extra large"
+    end
+
+    test "quadratic equation using return stack operators" do
+      assert RPNForthThing.initialize(~w[
+        : QUADRATIC  ( a b c x -- n )
+        >r swap rot r@ * + r> * + ;
+        2 7 9 3 QUADRATIC
+      ]) == 48
+    end
+
+    test "Temp conversions" do
+      assert RPNForthThing.initialize(~w[
+        : F>C  ( fahr -- cels )  32 - 10 18 */ ;
+        : C>F  ( cels -- fahr )  18 10 */ 32 + ;
+        : C>K  ( cels -- kelv )  273 + ;
+        : K>C  ( kelv -- cels )  273 - ;
+        : F>K  ( fahr -- kelv )  F>C C>K ;
+        : K>F  ( kelv -- fahr )  K>C C>F ;
+        10 F>K 100 K>F
+      ]) == [-279, 261]
+    end
+
+    test "somewhat complex variable example" do
+      assert capture_io(fn -> RPNForthThing.initialize(~w[
+        : ? @ . ;
+        variable DATE
+        variable MONTH
+        variable YEAR
+        : !DATE YEAR ! DATE ! MONTH ! ;
+        7 31 3 !DATE
+        : .DATE MONTH ? DATE ? YEAR ? ;
+        .DATE
+      ]) end) == "7 31 3 "
+    end
+
+    test "egg counting example" do
+      assert capture_io(fn -> RPNForthThing.initialize(~w[
+        : ? @ . ;
+        variable EGGS
+        12 constant DOZEN
+        : RESET 0 EGGS ! ;
+        : EGG   1 EGGS +! ;
+        : CARTON DOZEN EGGS +! ;
+        RESET
+        EGG
+        EGG
+        CARTON
+        EGG
+        EGGS ?
+      ]) end) == "15 "
     end
 
   end
