@@ -17,32 +17,32 @@ defmodule Fib do
 
   def run_streaming(0), do: 0
   def run_streaming(num) when num > 0 and is_integer(num) do
-    {:ok, {total, _}} = Stream.iterate({0, 1}, fn {a, b} -> {b, a+b} end) |> Enum.fetch num
+    {:ok, {total, _}} = Stream.iterate({0, 1}, fn {a, b} -> {b, a+b} end) |> Enum.fetch(num)
     total
   end
 
 end
 
 # just a timing utility
-defmodule Time do
-  def now, do: ({msecs, secs, musecs} = :erlang.now; ((msecs*1000000 + secs)*1000000 + musecs)/1000000)
+defmodule MyTime do
+  def now, do: ({msecs, secs, musecs} = :erlang.timestamp; ((msecs*1000000 + secs)*1000000 + musecs)/1000000)
 end
 
 
 times = 1000000
 
-t = Time.now
+t = MyTime.now
 Fib.run_recursive times
-recursive_total_time = Time.now - t
+recursive_total_time = MyTime.now - t
 
-t = Time.now
+t = MyTime.now
 Fib.run_enumerative times
-enumerative_total_time = Time.now - t
+enumerative_total_time = MyTime.now - t
 
-t = Time.now
+t = MyTime.now
 Fib.run_streaming times
-streaming_total_time = Time.now - t
+streaming_total_time = MyTime.now - t
 
-IO.puts "Running Elixir recursive fib(#{times}) takes #{recursive_total_time} seconds"
-IO.puts "Running Elixir enumerative fib(#{times}) takes #{enumerative_total_time} seconds"
-IO.puts "Running Elixir streaming fib(#{times}) takes #{streaming_total_time} seconds"
+IO.puts "Running Elixir recursive fib(#{times}) takes #{recursive_total_time} seconds" #11.73
+IO.puts "Running Elixir enumerative fib(#{times}) takes #{enumerative_total_time} seconds" #12.21
+IO.puts "Running Elixir streaming fib(#{times}) takes #{streaming_total_time} seconds" #12.11
