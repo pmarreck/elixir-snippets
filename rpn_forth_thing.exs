@@ -23,11 +23,21 @@
 
 defmodule RPNForthThing do
 
+  def remove_backslashed_text(input) when is_binary(input) do
+    Regex.replace(~r/\\(?:[^\n])*\n/m, input, "\n")
+  end
+
+  defguard map_key?(map, key) when is_map(map) and :erlang.is_map_key(key, map)
+
   def initialize do
     initialize(System.argv)
   end
   def initialize(input) when is_binary(input) do
-    initialize(String.split(input, ~r/\s+/))
+    input
+    |> remove_backslashed_text()
+    |> String.trim
+    |> String.split(~r/\s+/)
+    |> initialize
   end
   def initialize(input) when is_list(input) do
     input |> normalize |> compute([], [], Map.new)
@@ -57,6 +67,13 @@ defmodule RPNForthThing do
     end
   end
 
+  defp dump_stack_onto_stack([], stack) when is_list(stack) do
+    stack
+  end
+  defp dump_stack_onto_stack([h | t], stack) when is_list(stack) do
+    dump_stack_onto_stack(t, [h | stack])
+  end
+
   # when no instructions left and one item on data stack, just return that
   def compute([], [last_val], _, _) do
     last_val
@@ -72,15 +89,77 @@ defmodule RPNForthThing do
     data_stack
   end
 
+  def compute([ "END" | _ ], [last_elem_in_data_stack], [], _) do
+    last_elem_in_data_stack
+  end
   def compute([ "end" | _ ], [last_elem_in_data_stack], [], _) do
     last_elem_in_data_stack
   end
 
+  def compute([ "END" | _ ], data_stack, [], _) when is_list(data_stack) do
+    data_stack
+  end
   def compute([ "end" | _ ], data_stack, [], _) when is_list(data_stack) do
     data_stack
   end
 
-  def compute([ "do" | remainder ], [x, y | data_stack], return_stack, dict) do
+# If-Else-Then
+  # Note that this is a prefix function!
+  # Usage: test_val is on top of data_stack. "if <then-clause> [else <else-clause>] then"
+  # puts then-clause on top of instruction data_stack if test_val != 0, else-clause if test_val == 0.
+
+  # closing condition: a THEN is encountered, and there is an if-else-state on the return stack
+  def compute([ "THEN" | remaining_input ], data_stack, [0, %{if: _if_stack, else: else_stack} | return_stack], dict) do
+    compute(dump_stack_onto_stack(else_stack, remaining_input), data_stack, return_stack, dict)
+  end
+  def compute([ "then" | remaining_input ], data_stack, [0, %{if: _if_stack, else: else_stack} | return_stack], dict) do
+    compute(dump_stack_onto_stack(else_stack, remaining_input), data_stack, return_stack, dict)
+  end
+  def compute([ "THEN" | remaining_input ], data_stack, [_truthy, %{if: if_stack, else: _else_stack} | return_stack], dict) do
+    compute(dump_stack_onto_stack(if_stack, remaining_input), data_stack, return_stack, dict)
+  end
+  def compute([ "then" | remaining_input ], data_stack, [_truthy, %{if: if_stack, else: _else_stack} | return_stack], dict) do
+    compute(dump_stack_onto_stack(if_stack, remaining_input), data_stack, return_stack, dict)
+  end
+  # closing condition: a THEN is encountered, and there is an if-state on the return stack
+  def compute([ "THEN" | remaining_input ], data_stack, [0, %{if: _if_stack} | return_stack], dict) do
+    compute(remaining_input, data_stack, return_stack, dict)
+  end
+  def compute([ "then" | remaining_input ], data_stack, [0, %{if: _if_stack} | return_stack], dict) do
+    compute(remaining_input, data_stack, return_stack, dict)
+  end
+  def compute([ "THEN" | remaining_input ], data_stack, [_truthy, %{if: if_stack} | return_stack], dict) do
+    compute(dump_stack_onto_stack(if_stack, remaining_input), data_stack, return_stack, dict)
+  end
+  def compute([ "then" | remaining_input ], data_stack, [_truthy, %{if: if_stack} | return_stack], dict) do
+    compute(dump_stack_onto_stack(if_stack, remaining_input), data_stack, return_stack, dict)
+  end
+
+  # accumulate if-instructions or else-instructions on return stack (until a THEN is encountered, which should match above)
+  def compute([ in_else_clause | remaining_input ], data_stack, [x, %{if: if_instructions, else: else_instructions} | return_stack], dict) do
+    compute(remaining_input, data_stack, [x, %{if: if_instructions, else: [in_else_clause | else_instructions]} | return_stack], dict)
+  end
+
+  def compute([ "ELSE" | remaining_input ], data_stack, [x, %{if: if_stack} | return_stack], dict) do
+    compute(remaining_input, data_stack, [x, %{if: if_stack, else: []} | return_stack], dict)
+  end
+  def compute([ "else" | remaining_input ], data_stack, [x, %{if: if_stack} | return_stack], dict) do
+    compute(remaining_input, data_stack, [x, %{if: if_stack, else: []} | return_stack], dict)
+  end
+
+  def compute([ in_if_clause | remaining_input ], data_stack, [x, %{if: if_instructions} | return_stack], dict) do
+    compute(remaining_input, data_stack, [x, %{if: [in_if_clause | if_instructions]} | return_stack], dict)
+  end
+
+  # now detect IFs. Note that if we're already inside an if-then block, it will match above and just accumulate
+  def compute([ "IF" | remaining_input ], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, data_stack, [x, %{if: []} | return_stack], dict)
+  end
+  def compute([ "if" | remaining_input ], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, data_stack, [x, %{if: []} | return_stack], dict)
+  end
+
+  def compute([ "DO" | remainder ], [x, y | data_stack], return_stack, dict) do
     # The way this works is:
     # DO moves the index (0) and the control (5) over to the return stack.
     # I copies the top of the return stack to the data stack.
@@ -91,6 +170,13 @@ defmodule RPNForthThing do
     # return stack, and control resumes as normal.
     compute(remainder, data_stack, [x, y, %{do: remainder} | return_stack], dict)
   end
+  def compute([ "do" | remainder ], [x, y | data_stack], return_stack, dict) do
+    compute(remainder, data_stack, [x, y, %{do: remainder} | return_stack], dict)
+  end
+
+  def compute([ "I" | remainder ], data_stack, [x, _y, %{do: _do_block} | _rest_of_return_stack] = return_stack, dict) do
+    compute(remainder, [x | data_stack], return_stack, dict)
+  end
 
   def compute([ "i" | remainder ], data_stack, [x, _y, %{do: _do_block} | _rest_of_return_stack] = return_stack, dict) do
     compute(remainder, [x | data_stack], return_stack, dict)
@@ -98,25 +184,61 @@ defmodule RPNForthThing do
 
   # note implementation difference/similarity to "i". "i" assumes a loop already on the return stack
   # (and pattern-matches on that), r@ does not
+  def compute([ "R@" | remainder ], data_stack, [x | _rest_of_return_stack] = return_stack, dict) do
+    compute(remainder, [x | data_stack], return_stack, dict)
+  end
   def compute([ "r@" | remainder ], data_stack, [x | _rest_of_return_stack] = return_stack, dict) do
     compute(remainder, [x | data_stack], return_stack, dict)
   end
 
+  def compute([ ">R" | remainder ], [n | data_stack], return_stack, dict) do
+    compute(remainder, data_stack, [n | return_stack], dict)
+  end
   def compute([ ">r" | remainder ], [n | data_stack], return_stack, dict) do
     compute(remainder, data_stack, [n | return_stack], dict)
   end
 
+  def compute([ "R>" | remainder ], data_stack, [n | return_stack], dict) do
+    compute(remainder, [n | data_stack], return_stack, dict)
+  end
   def compute([ "r>" | remainder ], data_stack, [n | return_stack], dict) do
     compute(remainder, [n | data_stack], return_stack, dict)
   end
 
+  def compute([ "J" | remainder ], data_stack, [_x, _y, %{do: _do_block}, z | _rest_of_return_stack] = return_stack, dict) do
+    compute(remainder, [z | data_stack], return_stack, dict)
+  end
   def compute([ "j" | remainder ], data_stack, [_x, _y, %{do: _do_block}, z | _rest_of_return_stack] = return_stack, dict) do
     compute(remainder, [z | data_stack], return_stack, dict)
   end
 
   # loops. holy crap NESTED LOOPS WORK.
+  def compute([ "LOOP" | remainder ], data_stack, [x, y, %{do: do_block} | return_stack], dict) do
+    x = x + 1
+    if x < y do
+      compute(do_block, data_stack, [x, y, %{do: do_block} | return_stack], dict)
+    else
+      compute(remainder, data_stack, return_stack, dict)
+    end
+  end
   def compute([ "loop" | remainder ], data_stack, [x, y, %{do: do_block} | return_stack], dict) do
     x = x + 1
+    if x < y do
+      compute(do_block, data_stack, [x, y, %{do: do_block} | return_stack], dict)
+    else
+      compute(remainder, data_stack, return_stack, dict)
+    end
+  end
+  def compute([ "+LOOP" | remainder ], [inc | data_stack], [x, y, %{do: do_block} | return_stack], dict) do
+    x = x + inc
+    if x < y do
+      compute(do_block, data_stack, [x, y, %{do: do_block} | return_stack], dict)
+    else
+      compute(remainder, data_stack, return_stack, dict)
+    end
+  end
+  def compute([ "+loop" | remainder ], [inc | data_stack], [x, y, %{do: do_block} | return_stack], dict) do
+    x = x + inc
     if x < y do
       compute(do_block, data_stack, [x, y, %{do: do_block} | return_stack], dict)
     else
@@ -152,10 +274,16 @@ defmodule RPNForthThing do
     compute(["*", x, "/" | remaining_input], data_stack, return_stack, dict)
   end
 
+  def compute([ "/MOD" | remaining_input], [x, y | data_stack], return_stack, dict) do
+    compute(remaining_input, [div(y, x), rem(y, x) | data_stack], return_stack, dict)
+  end
   def compute([ "/mod" | remaining_input], [x, y | data_stack], return_stack, dict) do
     compute(remaining_input, [div(y, x), rem(y, x) | data_stack], return_stack, dict)
   end
 
+  def compute([ "*/MOD" | remaining_input], [x, y, z | data_stack], return_stack, dict) do
+    compute(remaining_input, [rem(x*y, z), div(x*y, z) | data_stack], return_stack, dict)
+  end
   def compute([ "*/mod" | remaining_input], [x, y, z | data_stack], return_stack, dict) do
     compute(remaining_input, [rem(x*y, z), div(x*y, z) | data_stack], return_stack, dict)
   end
@@ -181,40 +309,109 @@ defmodule RPNForthThing do
   end
 
   # note: allowing these conflicts with integer-only arithmetic
+  def compute([ "PI" | remaining_input], data_stack, return_stack, dict) do
+    compute(remaining_input, [:math.pi | data_stack], return_stack, dict)
+  end
   def compute([ "pi" | remaining_input], data_stack, return_stack, dict) do
     compute(remaining_input, [:math.pi | data_stack], return_stack, dict)
   end
 
+  def compute([ "SIN" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [:math.sin(x) | data_stack], return_stack, dict)
+  end
   def compute([ "sin" | remaining_input], [x | data_stack], return_stack, dict) do
     compute(remaining_input, [:math.sin(x) | data_stack], return_stack, dict)
   end
 
+  def compute([ "COS" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [:math.cos(x) | data_stack], return_stack, dict)
+  end
   def compute([ "cos" | remaining_input], [x | data_stack], return_stack, dict) do
     compute(remaining_input, [:math.cos(x) | data_stack], return_stack, dict)
   end
 
+  def compute([ "TAN" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [:math.tan(x) | data_stack], return_stack, dict)
+  end
   def compute([ "tan" | remaining_input], [x | data_stack], return_stack, dict) do
     compute(remaining_input, [:math.tan(x) | data_stack], return_stack, dict)
   end
 
+  def compute([ "SQRT" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [:math.sqrt(x) | data_stack], return_stack, dict)
+  end
   def compute([ "sqrt" | remaining_input], [x | data_stack], return_stack, dict) do
     compute(remaining_input, [:math.sqrt(x) | data_stack], return_stack, dict)
   end
 
+  def compute([ "DROP" | remaining_input], [_ | data_stack], return_stack, dict) do
+    compute(remaining_input, data_stack, return_stack, dict)
+  end
   def compute([ "drop" | remaining_input], [_ | data_stack], return_stack, dict) do
     compute(remaining_input, data_stack, return_stack, dict)
   end
 
+  def compute([ "2DROP" | remaining_input], [_, _ | data_stack], return_stack, dict) do
+    compute(remaining_input, data_stack, return_stack, dict)
+  end
+  def compute([ "2drop" | remaining_input], [_, _ | data_stack], return_stack, dict) do
+    compute(remaining_input, data_stack, return_stack, dict)
+  end
+
+  def compute([ "DUP" | remaining_input], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, [x, x | data_stack], return_stack, dict)
+  end
   def compute([ "dup" | remaining_input], [x | data_stack], return_stack, dict) do
     compute(remaining_input, [x, x | data_stack], return_stack, dict)
   end
 
+  def compute([ "2DUP" | remaining_input], [x, y | data_stack], return_stack, dict) do
+    compute(remaining_input, [x, y, x, y | data_stack], return_stack, dict)
+  end
+  def compute([ "2dup" | remaining_input], [x, y | data_stack], return_stack, dict) do
+    compute(remaining_input, [x, y, x, y | data_stack], return_stack, dict)
+  end
+
+  def compute([ "?DUP" | remaining_input], [0 | _] = data_stack, return_stack, dict) do
+    compute(remaining_input, data_stack, return_stack, dict)
+  end
+  def compute([ "?dup" | remaining_input], [0 | _] = data_stack, return_stack, dict) do
+    compute(remaining_input, data_stack, return_stack, dict)
+  end
+
+  def compute([ "?DUP" | remaining_input], [x | _] = data_stack, return_stack, dict) do
+    compute(remaining_input, [x | data_stack], return_stack, dict)
+  end
+  def compute([ "?dup" | remaining_input], [x | _] = data_stack, return_stack, dict) do
+    compute(remaining_input, [x | data_stack], return_stack, dict)
+  end
+
+  def compute([ "SWAP" | remaining_input], [y, x | data_stack], return_stack, dict) do
+    compute(remaining_input, [x, y | data_stack], return_stack, dict)
+  end
   def compute([ "swap" | remaining_input], [y, x | data_stack], return_stack, dict) do
     compute(remaining_input, [x, y | data_stack], return_stack, dict)
   end
 
+  def compute([ "2SWAP" | remaining_input], [w, x, y, z | data_stack], return_stack, dict) do
+    compute(remaining_input, [y, z, w, x | data_stack], return_stack, dict)
+  end
+  def compute([ "2swap" | remaining_input], [w, x, y, z | data_stack], return_stack, dict) do
+    compute(remaining_input, [y, z, w, x | data_stack], return_stack, dict)
+  end
+
+  def compute([ "OVER" | remaining_input], [x, y | data_stack], return_stack, dict) do
+    compute(remaining_input, [y, x, y | data_stack], return_stack, dict)
+  end
   def compute([ "over" | remaining_input], [x, y | data_stack], return_stack, dict) do
     compute(remaining_input, [y, x, y | data_stack], return_stack, dict)
+  end
+
+  def compute([ "2OVER" | remaining_input], [x1, x2, y1, y2 | data_stack], return_stack, dict) do
+    compute(remaining_input, [y1, y2, x1, x2, y1, y2 | data_stack], return_stack, dict)
+  end
+  def compute([ "2over" | remaining_input], [x1, x2, y1, y2 | data_stack], return_stack, dict) do
+    compute(remaining_input, [y1, y2, x1, x2, y1, y2 | data_stack], return_stack, dict)
   end
 
   # In-place decrement
@@ -233,16 +430,29 @@ defmodule RPNForthThing do
   end
 
   # negate (similar)
+  def compute([ "NEGATE" | remaining_input], [n | data_stack], return_stack, dict) do
+    compute(remaining_input, [-n | data_stack], return_stack, dict)
+  end
   def compute([ "negate" | remaining_input], [n | data_stack], return_stack, dict) do
     compute(remaining_input, [-n | data_stack], return_stack, dict)
   end
 
   # random numbers
+  def compute([ "RAND" | remaining_input], data_stack, return_stack, dict) do
+    compute(remaining_input, [:rand.uniform | data_stack], return_stack, dict)
+  end
   def compute([ "rand" | remaining_input], data_stack, return_stack, dict) do
     compute(remaining_input, [:rand.uniform | data_stack], return_stack, dict)
   end
 
   # max
+  def compute([ "MAX" | remaining_input], [a, b | data_stack], return_stack, dict) do
+    max = case a < b do
+      true -> b
+      false -> a
+    end
+    compute(remaining_input, [max | data_stack], return_stack, dict)
+  end
   def compute([ "max" | remaining_input], [a, b | data_stack], return_stack, dict) do
     max = case a < b do
       true -> b
@@ -252,6 +462,13 @@ defmodule RPNForthThing do
   end
 
   # min
+  def compute([ "MIN" | remaining_input], [a, b | data_stack], return_stack, dict) do
+    min = case a < b do
+      true -> a
+      false -> b
+    end
+    compute(remaining_input, [min | data_stack], return_stack, dict)
+  end
   def compute([ "min" | remaining_input], [a, b | data_stack], return_stack, dict) do
     min = case a < b do
       true -> a
@@ -261,12 +478,26 @@ defmodule RPNForthThing do
   end
 
   # abs
+  def compute([ "ABS" | remaining_input], [n | data_stack], return_stack, dict) do
+    compute(remaining_input, [abs(n) | data_stack], return_stack, dict)
+  end
   def compute([ "abs" | remaining_input], [n | data_stack], return_stack, dict) do
     compute(remaining_input, [abs(n) | data_stack], return_stack, dict)
   end
 
   # inspection. just spits out the remaining instructions, and the data_stack and dict states
   # Sort of, shockingly simple?
+  def compute([ "INSPECT" | remaining_input], data_stack, return_stack, dict) do
+    IO.puts "Remaining instructions:"
+    IO.inspect remaining_input
+    IO.puts "Data Stack:"
+    IO.inspect data_stack
+    IO.puts "Return Stack:"
+    IO.inspect return_stack
+    IO.puts "Dictionary:"
+    IO.inspect dict
+    compute(remaining_input, data_stack, return_stack, dict)
+  end
   def compute([ "inspect" | remaining_input], data_stack, return_stack, dict) do
     IO.puts "Remaining instructions:"
     IO.inspect remaining_input
@@ -285,69 +516,113 @@ defmodule RPNForthThing do
   # for truths, boolean tests should compare with 0 (falsity) instead of 1
 
   def compute([ "=" | remaining_input], [y, x | data_stack], return_stack, dict) do
-    out = if y == x, do: 1, else: 0
+    out = if y == x, do: -1, else: 0
     compute(remaining_input, [out | data_stack], return_stack, dict)
   end
 
   def compute([ "<>" | remaining_input], [y, x | data_stack], return_stack, dict) do
-    out = if y != x, do: 1, else: 0
+    out = if y != x, do: -1, else: 0
     compute(remaining_input, [out | data_stack], return_stack, dict)
   end
 
   def compute([ "<" | remaining_input], [y, x | data_stack], return_stack, dict) do
-    out = if x < y, do: 1, else: 0
+    out = if x < y, do: -1, else: 0
     compute(remaining_input, [out | data_stack], return_stack, dict)
   end
 
   def compute([ "<=" | remaining_input], [y, x | data_stack], return_stack, dict) do
-    out = if x <= y, do: 1, else: 0
+    out = if x <= y, do: -1, else: 0
     compute(remaining_input, [out | data_stack], return_stack, dict)
   end
 
   def compute([ ">" | remaining_input], [y, x | data_stack], return_stack, dict) do
-    out = if x > y, do: 1, else: 0
+    out = if x > y, do: -1, else: 0
     compute(remaining_input, [out | data_stack], return_stack, dict)
   end
 
   def compute([ ">=" | remaining_input], [y, x | data_stack], return_stack, dict) do
-    out = if x >= y, do: 1, else: 0
+    out = if x >= y, do: -1, else: 0
     compute(remaining_input, [out | data_stack], return_stack, dict)
   end
 
+  def compute([ "0=" | remaining_input], [0 | data_stack], return_stack, dict) do
+    compute(remaining_input, [-1 | data_stack], return_stack, dict)
+  end
+  def compute([ "0=" | remaining_input], [_x | data_stack], return_stack, dict) do
+    compute(remaining_input, [0 | data_stack], return_stack, dict)
+  end
+
+  def compute([ "0<" | remaining_input], [x | data_stack], return_stack, dict) when x < 0 do
+    compute(remaining_input, [-1 | data_stack], return_stack, dict)
+  end
+  def compute([ "0<" | remaining_input], [_x | data_stack], return_stack, dict) do
+    compute(remaining_input, [0 | data_stack], return_stack, dict)
+  end
+
+  def compute([ "0>" | remaining_input], [x | data_stack], return_stack, dict) when x > 0 do
+    compute(remaining_input, [-1 | data_stack], return_stack, dict)
+  end
+  def compute([ "0>" | remaining_input], [_x | data_stack], return_stack, dict) do
+    compute(remaining_input, [0 | data_stack], return_stack, dict)
+  end
+
+  # true/false constants
+  def compute([ "FALSE" | remaining_input], data_stack, return_stack, dict) do
+    compute(remaining_input, [0 | data_stack], return_stack, dict)
+  end
+  def compute([ "false" | remaining_input], data_stack, return_stack, dict) do
+    compute(remaining_input, [0 | data_stack], return_stack, dict)
+  end
+
+  def compute([ "TRUE" | remaining_input], data_stack, return_stack, dict) do
+    compute(remaining_input, [-1 | data_stack], return_stack, dict)
+  end
+  def compute([ "true" | remaining_input], data_stack, return_stack, dict) do
+    compute(remaining_input, [-1 | data_stack], return_stack, dict)
+  end
+
+  def compute([ "AND" | remaining_input], [y, x | data_stack], return_stack, dict) do
+    out = if ((y != 0) and (x != 0)), do: -1, else: 0
+    compute(remaining_input, [out | data_stack], return_stack, dict)
+  end
   def compute([ "and" | remaining_input], [y, x | data_stack], return_stack, dict) do
-    out = if ((y != 0) and (x != 0)), do: 1, else: 0
+    out = if ((y != 0) and (x != 0)), do: -1, else: 0
     compute(remaining_input, [out | data_stack], return_stack, dict)
   end
 
+  def compute([ "OR" | remaining_input], [y, x | data_stack], return_stack, dict) do
+    out = if ((y != 0) or (x != 0)), do: -1, else: 0
+    compute(remaining_input, [out | data_stack], return_stack, dict)
+  end
   def compute([ "or" | remaining_input], [y, x | data_stack], return_stack, dict) do
-    out = if ((y != 0) or (x != 0)), do: 1, else: 0
+    out = if ((y != 0) or (x != 0)), do: -1, else: 0
     compute(remaining_input, [out | data_stack], return_stack, dict)
   end
 
-  def compute([ "not" | remaining_input], [x | data_stack], return_stack, dict) do
-    out = if x == 0, do: 1, else: 0
-    compute(remaining_input, [out | data_stack], return_stack, dict)
+  def compute([ "NOT" | remaining_input], [0 | data_stack], return_stack, dict) do
+    compute(remaining_input, [-1 | data_stack], return_stack, dict)
+  end
+  def compute([ "not" | remaining_input], [0 | data_stack], return_stack, dict) do
+    compute(remaining_input, [-1 | data_stack], return_stack, dict)
+  end
+  def compute([ "NOT" | remaining_input], [_truthy | data_stack], return_stack, dict) do
+    compute(remaining_input, [0 | data_stack], return_stack, dict)
+  end
+  def compute([ "not" | remaining_input], [_truthy | data_stack], return_stack, dict) do
+    compute(remaining_input, [0 | data_stack], return_stack, dict)
   end
 
-  # If-Else-Then
-  # Note that this is a prefix function!
-  # Usage: test_val is on top of data_stack. "if <then-clause> else <else-clause> then"
-  # puts then-clause on top of instruction data_stack if test_val != 0, else-clause if test_val == 0.
-  def compute([ "if" | remaining_input], [x | data_stack], return_stack, dict) do
-    {if_and_possibly_else_clause, ["then" | remaining_input]} = Enum.split_while(remaining_input, fn(ins) -> ins != "then" end)
-    {if_clause, else_clause} =
-      if Enum.any?(if_and_possibly_else_clause, fn ins -> ins == "else" end) do
-        {if_clause, else_match} = Enum.split_while(if_and_possibly_else_clause, fn(ins) -> ins != "else" end)
-        ["else" | else_clause_without_else] = else_match
-        {if_clause, else_clause_without_else}
-      else
-        {if_and_possibly_else_clause, []}
-      end
-    if x != 0 do
-      compute(if_clause ++ remaining_input, data_stack, return_stack, dict)
-    else
-      compute(else_clause ++ remaining_input, data_stack, return_stack, dict)
-    end
+  def compute([ "INVERT" | remaining_input], [0 | data_stack], return_stack, dict) do
+    compute(remaining_input, [-1 | data_stack], return_stack, dict)
+  end
+  def compute([ "invert" | remaining_input], [0 | data_stack], return_stack, dict) do
+    compute(remaining_input, [-1 | data_stack], return_stack, dict)
+  end
+  def compute([ "INVERT" | remaining_input], [_truthy | data_stack], return_stack, dict) do
+    compute(remaining_input, [0 | data_stack], return_stack, dict)
+  end
+  def compute([ "invert" | remaining_input], [_truthy | data_stack], return_stack, dict) do
+    compute(remaining_input, [0 | data_stack], return_stack, dict)
   end
 
   # Rotation
@@ -366,20 +641,32 @@ defmodule RPNForthThing do
   # end
 
   # Rotate the top 3 values on the data_stack down (assuming top element is bottom-most, like an RPN calculator)
+  def compute([ "ROT3V" | remaining_input], [x, y, z | data_stack], return_stack, dict) do
+    compute(remaining_input, [y, z, x | data_stack], return_stack, dict)
+  end
   def compute([ "rot3v" | remaining_input], [x, y, z | data_stack], return_stack, dict) do
     compute(remaining_input, [y, z, x | data_stack], return_stack, dict)
   end
 
   # Rotate the top 3 values on the data_stack up (assuming top element is bottom-most, like an RPN calculator)
+  def compute([ "ROT3^" | remaining_input], [x, y, z | data_stack], return_stack, dict) do
+    compute(remaining_input, [z, x, y | data_stack], return_stack, dict)
+  end
   def compute([ "rot3^" | remaining_input], [x, y, z | data_stack], return_stack, dict) do
     compute(remaining_input, [z, x, y | data_stack], return_stack, dict)
   end
 
   # Assume "rot" is equivalent to "rot3^" for now
+  def compute([ "ROT" | remaining_input], [x, y, z | data_stack], return_stack, dict) do
+    compute(remaining_input, [z, x, y | data_stack], return_stack, dict)
+  end
   def compute([ "rot" | remaining_input], [x, y, z | data_stack], return_stack, dict) do
     compute(remaining_input, [z, x, y | data_stack], return_stack, dict)
   end
 
+  def compute([ "-ROT" | remaining_input], data_stack, return_stack, dict) when is_list(data_stack) do
+    compute(["rot", "rot" | remaining_input], data_stack, return_stack, dict)
+  end
   def compute([ "-rot" | remaining_input], data_stack, return_stack, dict) when is_list(data_stack) do
     compute(["rot", "rot" | remaining_input], data_stack, return_stack, dict)
   end
@@ -398,13 +685,24 @@ defmodule RPNForthThing do
 
   # new variables! (store in dictionary)
   # ideally in future it will error if it already exists as a name in the dict
+  def compute([ "VARIABLE", name | remaining_input ], data_stack, return_stack, dict) do
+    compute(remaining_input, data_stack, return_stack, Map.put(dict, name, {:var, nil}))
+  end
   def compute([ "variable", name | remaining_input ], data_stack, return_stack, dict) do
     compute(remaining_input, data_stack, return_stack, Map.put(dict, name, {:var, nil}))
   end
 
   # new constants!
-  # just, eh, treat as another dictionary entry for now
-  # ideally in future it will error if you try to reassign a constant
+  # Raise if already exists
+  def compute([ "CONSTANT", name | _remaining_input ], _data_stack, _return_stack, dict) when map_key?(dict, name) do
+    raise "Constant '#{name}' already exists"
+  end
+  def compute([ "constant", name | _remaining_input ], _data_stack, _return_stack, dict) when map_key?(dict, name) do
+    raise "Constant '#{name}' already exists"
+  end
+  def compute([ "CONSTANT", name | remaining_input ], [x | data_stack], return_stack, dict) do
+    compute(remaining_input, data_stack, return_stack, Map.put(dict, name, {:const, x}))
+  end
   def compute([ "constant", name | remaining_input ], [x | data_stack], return_stack, dict) do
     compute(remaining_input, data_stack, return_stack, Map.put(dict, name, {:const, x}))
   end
@@ -432,6 +730,10 @@ defmodule RPNForthThing do
 
   # side effects!
   # Prints the binary of an ascii value on the top of the data_stack (without carriage return), popping it
+  def compute([ "EMIT" | remaining_input], [x | data_stack], return_stack, dict) do
+    IO.write <<x>>
+    compute(remaining_input, data_stack, return_stack, dict)
+  end
   def compute([ "emit" | remaining_input], [x | data_stack], return_stack, dict) do
     IO.write <<x>>
     compute(remaining_input, data_stack, return_stack, dict)
@@ -444,6 +746,12 @@ defmodule RPNForthThing do
   end
 
   # Outputs the entire data_stack but leaves it alone
+  def compute([ ".S" | remaining_input], data_stack, return_stack, dict) when is_list(data_stack) do
+    data_stack
+    |> Enum.reverse
+    |> Enum.each(fn x -> IO.write "#{x} " end)
+    compute(remaining_input, data_stack, return_stack, dict)
+  end
   def compute([ ".s" | remaining_input], data_stack, return_stack, dict) when is_list(data_stack) do
     data_stack
     |> Enum.reverse
@@ -452,9 +760,48 @@ defmodule RPNForthThing do
   end
 
   # Emits a carriage return
+  def compute([ "CR" | remaining_input], data_stack, return_stack, dict) do
+    IO.puts ""
+    compute(remaining_input, data_stack, return_stack, dict)
+  end
   def compute([ "cr" | remaining_input], data_stack, return_stack, dict) do
     IO.puts ""
     compute(remaining_input, data_stack, return_stack, dict)
+  end
+
+  # Fetches and prints. Just a substitution, like a built-in definition
+  def compute([ "?" | remaining_input], data_stack, return_stack, dict) do
+    compute(["@", "." | remaining_input], data_stack, return_stack, dict)
+  end
+
+  # Get stack depth
+  def compute([ "DEPTH" | remaining_input], data_stack, return_stack, dict) do
+    compute(remaining_input, [ length(data_stack) | data_stack ], return_stack, dict)
+  end
+  def compute([ "depth" | remaining_input], data_stack, return_stack, dict) do
+    compute(remaining_input, [ length(data_stack) | data_stack ], return_stack, dict)
+  end
+
+  # Abort
+  def compute(["ABORT\"" | remaining_input ], [0 | data_stack], return_stack, dict) do
+    {_discard, ["\"" | rest]} = Enum.split_while(remaining_input, fn(ins) -> ins != "\"" end)
+    compute(rest, data_stack, return_stack, dict)
+  end
+  def compute(["abort\"" | remaining_input ], [0 | data_stack], return_stack, dict) do
+    {_discard, ["\"" | rest]} = Enum.split_while(remaining_input, fn(ins) -> ins != "\"" end)
+    compute(rest, data_stack, return_stack, dict)
+  end
+  def compute(["ABORT\"" | remaining_input ], [_truthy | _data_stack], _return_stack, _dict) do
+    {to_print, _rest} = Enum.split_while(remaining_input, fn(ins) -> ins != "\"" end)
+    err = Enum.join(to_print, " ")
+    IO.write("Error: " <> err)
+    raise err
+  end
+  def compute(["abort\"" | remaining_input ], [_truthy | _data_stack], _return_stack, _dict) do
+    {to_print, _rest} = Enum.split_while(remaining_input, fn(ins) -> ins != "\"" end)
+    err = Enum.join(to_print, " ")
+    IO.write("Error: " <> err)
+    raise err
   end
 
   # Dictionary and variable definition lookup
@@ -468,8 +815,8 @@ defmodule RPNForthThing do
       {:word, val} when is_list(val) -> {val ++ remaining_input, data_stack, return_stack, dict}
       {:var, _} -> {remaining_input, [name | data_stack], return_stack, dict}
       {:const, val} -> {remaining_input, [val | data_stack], return_stack, dict}
-      {:unk, val} -> {remaining_input, [val | data_stack], return_stack, dict}
-      _           -> raise "Undefined name: #{name}"
+      {:unk, val} -> raise "Undefined name: #{val}" # {remaining_input, [val | data_stack], return_stack, dict}
+      unk           -> raise "Undefined type/value: #{inspect unk}"
     end
     compute(ri, ds, rs, dict)
   end
@@ -590,8 +937,13 @@ if System.argv |> List.first == "test" do
       assert RPNForthThing.initialize(~w[ 5 5 <> ]) == 0
       assert RPNForthThing.initialize(~w[ 5 4 < ]) == 0
       assert RPNForthThing.initialize(~w[ 5 4 > ]) != 0
-      assert RPNForthThing.initialize(~w[ 5 5 >= ]) == 1
-      assert RPNForthThing.initialize(~w[ 5 5 <= ]) == 1
+      assert RPNForthThing.initialize(~w[ 5 5 >= ]) == -1
+      assert RPNForthThing.initialize(~w[ 5 5 <= ]) == -1
+    end
+
+    test "boolean flag storage" do
+      assert RPNForthThing.initialize(~w[VARIABLE VERBOSE true VERBOSE ! VERBOSE @]) == -1
+      assert RPNForthThing.initialize(~w[VARIABLE debug FALSE debug ! debug @]) == 0
     end
 
     test "increment and decrement" do
@@ -606,11 +958,15 @@ if System.argv |> List.first == "test" do
     test "if else then" do
       assert RPNForthThing.initialize(~w[ 3 5 < if 33 else 44 then ]) == 33
       # assert RPNForthThing.initialize(~w[ 3 5 < ? 33 44 ]) == 33
-      assert RPNForthThing.initialize(~w[ 3 5 > if 33 else 44 then ]) == 44
+      assert RPNForthThing.initialize(~w[ 3 5 > IF 33 ELSE 44 THEN ]) == 44
       # assert RPNForthThing.initialize(~w[ 3 5 > ? 33 44 ]) == 44
     end
 
     test "nested if else then" do
+      assert RPNForthThing.initialize(~w[ 5 dup 3 < if 10 else 7 < if 1 else 5 then then ]) == 1
+    end
+
+    test "nested if else then with IO writes" do
       assert capture_io(fn ->
         RPNForthThing.initialize(~w[ 5 dup 3 < if ." greater " else 7 < if ." lesser " else ." equal " then then ])
       end) == "lesser"
@@ -622,11 +978,11 @@ if System.argv |> List.first == "test" do
 
     test "and or not" do
       assert RPNForthThing.initialize(~w[ 3 5 < 8 6 > and ]) != 0
-      assert RPNForthThing.initialize(~w[ 3 5 < 8 6 < and ]) == 0
+      assert RPNForthThing.initialize(~w[ 3 5 < 8 6 < AND ]) == 0
       assert RPNForthThing.initialize(~w[ 3 5 < 8 6 < or ]) != 0
-      assert RPNForthThing.initialize(~w[ 3 5 > 8 6 < or ]) == 0
+      assert RPNForthThing.initialize(~w[ 3 5 > 8 6 < OR ]) == 0
       assert RPNForthThing.initialize(~w[ 3 5 < 8 6 < and not ]) != 0
-      assert RPNForthThing.initialize(~w[ 3 5 < 8 6 < or not ]) == 0
+      assert RPNForthThing.initialize(~w[ 3 5 < 8 6 < OR NOT ]) == 0
     end
 
     test "rotate top 3 elements of stack up" do # what's "up" on a stack? Assumes the last element of the stack is on the bottom in the minds' eye
@@ -656,8 +1012,8 @@ if System.argv |> List.first == "test" do
     test "Forth example straight out of A Brief Introduction To Forth" do
       # http://users.ece.cmu.edu/~koopman/forth/hopl.html
       assert RPNForthThing.initialize(~w[
-        : SQUARED        ( n -- nsquared ) dup * ;
-        : SUM-OF-SQUARES ( a b -- c      ) SQUARED swap SQUARED + ;
+        : SQUARED        ( n -- nsquared ) DUP * ;
+        : SUM-OF-SQUARES ( a b -- c      ) SQUARED SWAP SQUARED + ;
         3 4 SUM-OF-SQUARES
       ]) == 25
     end
@@ -672,6 +1028,62 @@ if System.argv |> List.first == "test" do
         6 factorial
       ]) == 720
       # Well holy shit, it passes.
+    end
+
+    test "undefined expression raises" do
+      assert_raise RuntimeError, fn -> RPNForthThing.initialize("3 ?wtfisthis") end
+    end
+
+    test "ABORT given truthy value reports error and bails" do
+      assert_raise RuntimeError, fn ->
+        assert capture_io(fn ->
+          RPNForthThing.initialize("""
+            5 abort" Uh oh! "
+          """)
+        end) == "Error: Uh oh!"
+      end
+    end
+
+    test "ABORT given false value does nothing" do
+      assert RPNForthThing.initialize("""
+        0 ABORT" Uh oh! " 5
+      """) == 5
+    end
+
+    test "backslash ignores rest of line" do
+      assert RPNForthThing.remove_backslashed_text("""
+        : EMPTY-STACK \\ ( ... -- ) EMPTY STACK: HANDLES UNDERFLOWED STACK TOO.
+        DEPTH ?DUP IF DUP 0< IF NEGATE 0 DO 0 LOOP ELSE 0 DO DROP LOOP THEN THEN ;
+      """) == "  : EMPTY-STACK \n  DEPTH ?DUP IF DUP 0< IF NEGATE 0 DO 0 LOOP ELSE 0 DO DROP LOOP THEN THEN ;\n"
+    end
+
+    test "test full function" do
+      assert capture_io(fn ->
+        RPNForthThing.initialize(~w[ : ?FULL 12 = IF ." It's full " CR ELSE ." It's not full " CR THEN ; 11 ?FULL 12 ?FULL ])
+      end) == "It's not full\nIt's full\n"
+    end
+
+    # test "empty stack function" do
+    #   assert RPNForthThing.initialize("""
+    #     : EMPTY-STACK \\ ( ... -- ) EMPTY STACK: HANDLES UNDERFLOWED STACK TOO.
+    #     DEPTH ?DUP IF DUP 0< IF NEGATE 0 DO 0 LOOP ELSE 0 DO DROP LOOP THEN THEN ;
+    #     2 3 1 inspect EMPTY-STACK inspect
+    #   """) == 1
+    # end
+
+    test "+loop" do
+      assert capture_io(fn ->
+        RPNForthThing.initialize(~w[ : PENTAJUMPS 50 0 DO I . 5 +LOOP ; PENTAJUMPS ])
+      end) == "0 5 10 15 20 25 30 35 40 45 "
+    end
+
+    test "attempting to redefine a constant raises" do
+      assert_raise RuntimeError, fn ->
+        RPNForthThing.initialize("""
+        69 constant WhoaDude
+        0 constant WhoaDude
+        """)
+      end
     end
 
     test "emit" do
@@ -708,9 +1120,9 @@ if System.argv |> List.first == "test" do
       # example from https://github.com/dsevilla/uForth
       assert capture_io(fn ->
         RPNForthThing.initialize(~w[
-          : STAR 42 emit ;
-          : STARS 0 do STAR loop ;
-          20 STARS end
+          : STAR 42 EMIT ;
+          : STARS 0 DO STAR LOOP ;
+          20 STARS END
         ])
       end) == "********************"
     end
@@ -726,10 +1138,10 @@ if System.argv |> List.first == "test" do
     test "nested loops" do
       assert capture_io(fn ->
         RPNForthThing.initialize(~w[
-          : STAR 42 emit ;
-          : DASH 45 emit ;
-          : STARDASHES 0 do 2 0 do STAR loop 2 0 do DASH loop loop ;
-          5 STARDASHES end
+          : STAR 42 EMIT ;
+          : DASH 45 EMIT ;
+          : STARDASHES 0 DO 2 0 DO STAR LOOP 2 0 DO DASH LOOP LOOP ;
+          5 STARDASHES END
         ])
       end) == "**--**--**--**--**--"
     end
@@ -737,7 +1149,7 @@ if System.argv |> List.first == "test" do
     test "looping negative numbers in a definition" do
       assert capture_io(fn ->
         RPNForthThing.initialize(~w[
-          : SAMPLE  -243 -250 do i . loop ; SAMPLE
+          : SAMPLE  -243 -250 DO I . LOOP ; SAMPLE
         ])
       end) == "-250 -249 -248 -247 -246 -245 -244 "
     end
@@ -745,7 +1157,7 @@ if System.argv |> List.first == "test" do
     test "multiplication loop" do
       assert capture_io(fn ->
         RPNForthThing.initialize(~w[
-          : MULTIPLICATIONS  cr 11 1 do  dup i * .  loop  drop ; 7 MULTIPLICATIONS
+          : MULTIPLICATIONS CR 11 1 DO DUP I * . LOOP DROP ; 7 MULTIPLICATIONS
         ])
       end) == "\n7 14 21 28 35 42 49 56 63 70 "
     end
@@ -801,16 +1213,27 @@ if System.argv |> List.first == "test" do
       end) == "this is a test"
     end
 
+    test "divide by zero checker" do
+      assert capture_io(fn -> RPNForthThing.initialize("""
+      ( numerator denominator -- quotient )
+      : /CHECK DUP 0= IF ." invalid " cr DROP ELSE / THEN ;
+      5 0 /CHECK
+      25 5 /CHECK
+      .
+      """)
+      end) == "invalid\n5 "
+    end
+
     test "eggsize computation with nested IFs and quoted text" do
       assert capture_io(fn -> RPNForthThing.initialize(~w[
         : EGGSIZE
-        dup  18 < if  ." reject "      else
-        dup  21 < if  ." small "       else
-        dup  24 < if  ." medium "      else
-        dup  27 < if  ." large "       else
-        dup  30 < if  ." extra large " else
-                      ." error "
-        then then then then then drop ;
+        DUP  18 < IF  ." reject "      ELSE
+        DUP  21 < IF  ." small "       ELSE
+        DUP  24 < IF  ." medium "      ELSE
+        DUP  27 < IF  ." large "       ELSE
+        DUP  30 < IF  ." extra large " ELSE
+                      ." ERROR "
+        THEN THEN THEN THEN THEN DROP ;
         29 EGGSIZE
       ]) end) == "extra large"
     end
