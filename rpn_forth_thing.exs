@@ -738,7 +738,7 @@ defmodule RPNForthThing do
       {:word, val} when is_list(val) -> {val ++ remaining_input, data_stack, return_stack, dict}
       {:var, _} -> {remaining_input, [name | data_stack], return_stack, dict}
       {:const, val} -> {remaining_input, [val | data_stack], return_stack, dict}
-      {:unk, val} -> raise "Undefined name: #{val}" # {remaining_input, [val | data_stack], return_stack, dict}
+      {:unk, val} -> raise "Undefined name: #{inspect val}" # {remaining_input, [val | data_stack], return_stack, dict}
       unk           -> raise "Undefined type/value: #{inspect unk}"
     end
     compute(ri, ds, rs, dict)
