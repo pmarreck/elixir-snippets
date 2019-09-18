@@ -69,9 +69,19 @@ if System.argv |> List.first == "test" do
       assert MyersDiff.apply(str2, diff_str2_str1) == str1
     end
 
-    test "raises when script runs out of input" do
+    test "large-ish input" do
+      str1 = "This is a test. This is a test. This is a test. This is a test. This is a test. This is a test. This is a test. This is a test. This is a test. This is a test. This is a test. This is a test. This is a test. This is a test."
+      str2 = "This is a test. This is a test. This is a test. This is a test. This is a test. This is a test. This is a test. IT don't even know. Ths is a test. This is a test. This is a test. This is a teets. This is a test. This is a test. This is a test."
+      assert MyersDiff.diff(str1, str2) == [s: 112, i: "I", s: 1, i: " don't even know. T", s: 1, d: 1, s: 57, d: 1, i: "e", s: 1, i: "s", s: 49]
+    end
+
+    test "raises when script runs out of input but there are still commands" do
       assert_raise MatchError, fn -> MyersDiff.apply("this is test", [s: 15]) end
       assert_raise MatchError, fn -> MyersDiff.apply("this is test", [s: 8, d: 15]) end
+    end
+
+    test "raises when script runs out of commands but there's still input" do
+      assert_raise FunctionClauseError, fn -> MyersDiff.apply("this is test", [s: 4]) end
     end
   end
 end

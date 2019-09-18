@@ -18,11 +18,11 @@ if System.argv |> List.first == "test" do
 
     test "repeating" do
       repeat(3) do
-        send(self, :repeat_ok)
+        send(self(), :repeat_ok)
       end
-      assert_received :repeat_ok
-      assert_received :repeat_ok
-      assert_received :repeat_ok
+      repeat(3) do
+        assert_received :repeat_ok
+      end
       refute_received :repeat_ok
     end
 
