@@ -48,6 +48,7 @@ defmodule RPNForthThing do
 
   defguard is_map_key?(map, key) when is_map(map) and :erlang.is_map_key(key, map)
   defguard is_specific_struct?(struct, structname) when is_map_key?(struct, :__struct__) and :erlang.map_get(:__struct__, struct) == structname
+  defguard is_head_of_list_this_struct?(list, structname) when is_list(list) and is_map_key?(hd(list), :__struct__) and :erlang.map_get(:__struct__, hd(list)) == structname
 
   def initialize do
     initialize(System.argv)
