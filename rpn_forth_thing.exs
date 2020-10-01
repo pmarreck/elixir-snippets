@@ -476,6 +476,21 @@ defmodule RPNForthThing do
     compute(remaining_input, [out | data_stack], return_stack, dict)
   end
 
+  def compute([ "0=" | remaining_input], [x | data_stack], return_stack, dict) do
+    out = if x == 0, do: 1, else: 0
+    compute(remaining_input, [out | data_stack], return_stack, dict)
+  end
+
+  def compute([ "0<" | remaining_input], [x | data_stack], return_stack, dict) do
+    out = if x < 0, do: 1, else: 0
+    compute(remaining_input, [out | data_stack], return_stack, dict)
+  end
+
+  def compute([ "0>" | remaining_input], [x | data_stack], return_stack, dict) do
+    out = if x > 0, do: 1, else: 0
+    compute(remaining_input, [out | data_stack], return_stack, dict)
+  end
+
   def compute([ "<>" | remaining_input], [y, x | data_stack], return_stack, dict) do
     out = if y != x, do: -1, else: 0
     compute(remaining_input, [out | data_stack], return_stack, dict)
@@ -1210,6 +1225,30 @@ if System.argv |> List.first == "test" do
         EGG
         EGGS ?
       ]) end) == "15 "
+    end
+
+    test "frozen pies example" do
+      assert capture_io(fn -> RPNForthThing.initialize(~w[
+        : ? @ . ;
+        variable PIES  0 PIES !
+        : BAKE-PIE   1 PIES +! ;
+        : EAT-PIE PIES @
+          if -1 PIES +!  ." Thank you " cr
+   	      else ." What pie? " cr
+	        then
+        ;
+        variable FROZEN-PIES 0 FROZEN-PIES !
+        : FREEZE-PIES PIES @ FROZEN-PIES +!  0 PIES ! ;
+        EAT-PIE
+        BAKE-PIE
+        BAKE-PIE
+        BAKE-PIE
+        PIES ?
+        EAT-PIE
+        FREEZE-PIES
+        PIES ?
+        FROZEN-PIES ?
+      ]) end) == "What pie?\n3 Thank you\n0 2 "
     end
 
   end
