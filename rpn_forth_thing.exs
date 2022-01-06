@@ -468,32 +468,23 @@ defmodule RPNForthThing do
 
   # Logic/Booleans
   # For the purposes of the following logic, zero is false,
-  # anything else is true... although typically a 1 is returned
-  # for truths, boolean tests should compare with 0 (falsity) instead of 1
+  # anything else is true... although typically a -1 is returned
+  # for truths, boolean tests should compare with 0 (falsity) instead of -1
 
-  def compute([ "=" | remaining_input], [y, x | data_stack], return_stack, dict) do
-    out = if y == x, do: -1, else: 0
-    compute(remaining_input, [out | data_stack], return_stack, dict)
+  def compute([ "=" | remaining_input], [x, x | data_stack], return_stack, dict) do
+    compute(remaining_input, [-1 | data_stack], return_stack, dict)
   end
 
-  def compute([ "0=" | remaining_input], [x | data_stack], return_stack, dict) do
-    out = if x == 0, do: 1, else: 0
-    compute(remaining_input, [out | data_stack], return_stack, dict)
+  def compute([ "=" | remaining_input], [_y, _x | data_stack], return_stack, dict) do
+    compute(remaining_input, [0 | data_stack], return_stack, dict)
   end
 
-  def compute([ "0<" | remaining_input], [x | data_stack], return_stack, dict) do
-    out = if x < 0, do: 1, else: 0
-    compute(remaining_input, [out | data_stack], return_stack, dict)
+  def compute([ "<>" | remaining_input], [x, x | data_stack], return_stack, dict) do
+    compute(remaining_input, [0 | data_stack], return_stack, dict)
   end
 
-  def compute([ "0>" | remaining_input], [x | data_stack], return_stack, dict) do
-    out = if x > 0, do: 1, else: 0
-    compute(remaining_input, [out | data_stack], return_stack, dict)
-  end
-
-  def compute([ "<>" | remaining_input], [y, x | data_stack], return_stack, dict) do
-    out = if y != x, do: -1, else: 0
-    compute(remaining_input, [out | data_stack], return_stack, dict)
+  def compute([ "<>" | remaining_input], [_y, _x | data_stack], return_stack, dict) do
+    compute(remaining_input, [-1 | data_stack], return_stack, dict)
   end
 
   def compute([ "<" | remaining_input], [y, x | data_stack], return_stack, dict) do
@@ -960,7 +951,7 @@ if System.argv |> List.first == "test" do
     test "defining and using factorial" do
       # crap, I need a rot3 or something. brb... Done.
       assert RPNForthThing.initialize(~w[
-        ( Checks if we've decremented below 1; if not, recurse )
+        ( Checks if we've decremented below 1; if not recurse )
         : inner_factorial dup 1 > if dup rot3^ * swap 1- inner_factorial else drop then ;
         ( Entry point. Pushes a running total onto the stack and swaps )
         : factorial 1 swap inner_factorial ;
