@@ -1,4 +1,0 @@
-No Arguments = Side-Causes
-No Return Value = Side-Effects
-Mocks = Proof Your Code is Impure
-All Of The Above Lead to Spaghetti with Bug Sauce
