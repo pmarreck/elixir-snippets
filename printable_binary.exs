@@ -195,4 +195,13 @@ if System.argv |> List.first == "test" do
     end
 
   end
+else
+  mode = System.argv |> List.first # either "encode" or "decode"
+  input = IO.read(:stdio, :all)
+  case mode do
+    "encode" -> input |> PrintableBinary.encode |> IO.puts
+    "decode" -> input |> PrintableBinary.decode |> IO.puts
+    blank when blank in ["",nil] -> IO.puts "Usage: #{Path.basename(__ENV__.file)} [ test | encode|decode < input.bin ]\nAnother example: head -c 500 /dev/urandom | elixir printable_binary.exs encode"
+    _ -> raise "Unknown mode argument '#{mode}', please use either 'encode' or 'decode', or run the test suite with 'test'"
+  end
 end

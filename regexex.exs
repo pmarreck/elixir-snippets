@@ -107,7 +107,7 @@ defmodule RegexEx do
   end
 
   # while in chars context, collect set of chars
-
+  # TODO: write code to make this work
 
   # default match
   def match(<<m::utf8, s::binary>>, <<n::utf8, t::binary>>, state = %{stack: _stack, matches: _matches, debug: debug}) when m == n do
